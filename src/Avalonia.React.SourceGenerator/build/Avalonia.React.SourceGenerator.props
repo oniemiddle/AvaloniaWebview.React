@@ -1,0 +1,6 @@
+<Project>
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\**\*.d.ts"
+                     Exclude="$(MSBuildProjectDirectory)\**\node_modules\**;$(MSBuildProjectDirectory)\**\bin\**;$(MSBuildProjectDirectory)\**\obj\**" />
+  </ItemGroup>
+</Project>

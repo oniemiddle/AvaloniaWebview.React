@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>ReactHost</AssemblyName>
+    <RootNamespace>ReactHost</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaReactProjectDirectory>$(MSBuildProjectDirectory)\..\react-app</AvaloniaReactProjectDirectory>
+    <AvaloniaReactDevServerDirectory>$(MSBuildProjectDirectory)\..\react-app</AvaloniaReactDevServerDirectory>
+    <AvaloniaReactDevServerWarmupPath>src/main.tsx</AvaloniaReactDevServerWarmupPath>
+    <AvaloniaReactBridgeDirectory>$(MSBuildProjectDirectory)\..\..\client</AvaloniaReactBridgeDirectory>
+    <!-- Debug serves the live Vite app; building the production bundle on every F5 is redundant. -->
+    <AvaloniaReactBuildOnBuild Condition="'$(Configuration)' == 'Debug'">false</AvaloniaReactBuildOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <ProjectReference Include="..\..\src\Avalonia.React\Avalonia.React.csproj" />
+    <ProjectReference Include="..\..\src\Avalonia.React.SourceGenerator\Avalonia.React.SourceGenerator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="FrontendApi.d.ts" />
+  </ItemGroup>
+  <Import Project="..\..\src\Avalonia.React\build\Avalonia.React.targets" />
+  <Import Project="..\..\src\Avalonia.React.Vite\build\Avalonia.React.Vite.targets" />
+</Project>

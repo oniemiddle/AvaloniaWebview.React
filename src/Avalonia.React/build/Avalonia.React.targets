@@ -1,0 +1,46 @@
+<Project>
+  <PropertyGroup>
+    <AvaloniaReactProjectDirectory Condition="'$(AvaloniaReactProjectDirectory)' == ''">$(MSBuildProjectDirectory)\ClientApp</AvaloniaReactProjectDirectory>
+    <AvaloniaReactBridgeDirectory Condition="'$(AvaloniaReactBridgeDirectory)' == ''"></AvaloniaReactBridgeDirectory>
+    <AvaloniaReactBuildCommand Condition="'$(AvaloniaReactBuildCommand)' == ''">npm run build</AvaloniaReactBuildCommand>
+    <AvaloniaReactInstallCommand Condition="'$(AvaloniaReactInstallCommand)' == ''">npm ci</AvaloniaReactInstallCommand>
+    <AvaloniaReactBuildOnBuild Condition="'$(AvaloniaReactBuildOnBuild)' == ''">true</AvaloniaReactBuildOnBuild>
+  </PropertyGroup>
+
+  <Target Name="AvaloniaReactBuildBridge"
+          Condition="'$(AvaloniaReactBuildOnBuild)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(AvaloniaReactBridgeDirectory)' != '' and Exists('$(AvaloniaReactBridgeDirectory)\package.json')">
+    <Exec Command="npm ci" WorkingDirectory="$(AvaloniaReactBridgeDirectory)" Condition="!Exists('$(AvaloniaReactBridgeDirectory)\node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(AvaloniaReactBridgeDirectory)" />
+  </Target>
+
+  <Target Name="AvaloniaReactBuildFrontend"
+          BeforeTargets="Build"
+          DependsOnTargets="AvaloniaReactBuildBridge"
+          Condition="'$(AvaloniaReactBuildOnBuild)' == 'true' and '$(DesignTimeBuild)' != 'true' and Exists('$(AvaloniaReactProjectDirectory)\package.json')">
+    <Message Importance="high" Text="Building React frontend in $(AvaloniaReactProjectDirectory)" />
+    <Exec Command="$(AvaloniaReactInstallCommand)" WorkingDirectory="$(AvaloniaReactProjectDirectory)" Condition="!Exists('$(AvaloniaReactProjectDirectory)\node_modules')" />
+    <Exec Command="$(AvaloniaReactBuildCommand)" WorkingDirectory="$(AvaloniaReactProjectDirectory)" />
+  </Target>
+
+  <Target Name="AvaloniaReactCopyBuildOutput"
+          AfterTargets="Build"
+          Condition="Exists('$(AvaloniaReactProjectDirectory)\dist')">
+    <ItemGroup>
+      <_AvaloniaReactOutput Include="$(AvaloniaReactProjectDirectory)\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AvaloniaReactOutput)"
+          DestinationFiles="@(_AvaloniaReactOutput->'$(TargetDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="AvaloniaReactCopyPublishOutput"
+          AfterTargets="Publish"
+          Condition="Exists('$(AvaloniaReactProjectDirectory)\dist')">
+    <ItemGroup>
+      <_AvaloniaReactPublishOutput Include="$(AvaloniaReactProjectDirectory)\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AvaloniaReactPublishOutput)"
+          DestinationFiles="@(_AvaloniaReactPublishOutput->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

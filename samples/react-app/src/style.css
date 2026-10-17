@@ -1,0 +1,16 @@
+:root { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; width: 100%; min-width: 640px; min-height: 100%; height: 100%; }
+body { color: var(--semi-color-text-0); background: var(--semi-color-bg-0); }
+.app-shell { min-height: 100vh; background: var(--semi-color-bg-0); }
+.app-sider { background: var(--semi-color-bg-1); border-right: 1px solid var(--semi-color-border); }
+.brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 18px; font-weight: 650; color: var(--semi-color-text-0); }
+.app-header { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; background: var(--semi-color-bg-1); border-bottom: 1px solid var(--semi-color-border); }
+.app-content { padding: 28px; overflow: auto; }
+.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.page-heading .semi-typography-h3 { margin: 6px 0; }
+.stats-row { margin-bottom: 20px; }
+.stats-row .semi-card { height: 100%; }
+.service-card, .bridge-card { margin-bottom: 18px; }
+.service-card .semi-card-body, .bridge-card .semi-card-body { padding-top: 0; }

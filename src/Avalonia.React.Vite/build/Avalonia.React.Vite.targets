@@ -1,0 +1,117 @@
+<Project>
+  <PropertyGroup>
+    <AvaloniaReactDevServerDirectory Condition="'$(AvaloniaReactDevServerDirectory)' == ''">$(MSBuildProjectDirectory)\ClientApp</AvaloniaReactDevServerDirectory>
+    <AvaloniaReactDevServerUrl Condition="'$(AvaloniaReactDevServerUrl)' == ''">http://127.0.0.1:5173/</AvaloniaReactDevServerUrl>
+    <AvaloniaReactDevServerCommand Condition="'$(AvaloniaReactDevServerCommand)' == ''">node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort</AvaloniaReactDevServerCommand>
+    <AvaloniaReactAutoStart Condition="'$(AvaloniaReactAutoStart)' == ''">true</AvaloniaReactAutoStart>
+    <!-- Visual Studio's fast up-to-date check cannot see whether the external Vite process is alive. -->
+    <DisableFastUpToDateCheck Condition="'$(DisableFastUpToDateCheck)' == '' and '$(AvaloniaReactAutoStart)' == 'true' and '$(Configuration)' == 'Debug' and Exists('$(AvaloniaReactDevServerDirectory)\package.json')">true</DisableFastUpToDateCheck>
+  </PropertyGroup>
+
+  <UsingTask TaskName="AvaloniaReactStartDevServer" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <WorkingDirectory ParameterType="System.String" Required="true" />
+      <Url ParameterType="System.String" Required="true" />
+      <Command ParameterType="System.String" Required="true" />
+      <PidFile ParameterType="System.String" Required="true" />
+      <WarmupPath ParameterType="System.String" Required="false" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Diagnostics" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Net.Http" />
+      <Using Namespace="System.Net.Sockets" />
+      <Using Namespace="System.Threading" />
+      <Code Type="Method" Language="cs"><![CDATA[
+        public override bool Execute()
+        {
+        var endpoint = new Uri(Url);
+        var port = endpoint.IsDefaultPort ? (endpoint.Scheme == "https" ? 443 : 80) : endpoint.Port;
+        bool IsListening()
+        {
+            try
+            {
+                using var client = new TcpClient();
+                var connect = client.ConnectAsync(endpoint.Host, port);
+                return connect.Wait(TimeSpan.FromMilliseconds(300)) && client.Connected;
+            }
+            catch { return false; }
+        }
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        bool IsReady()
+        {
+            if (!IsListening()) return false;
+            if (String.IsNullOrWhiteSpace(WarmupPath)) return true;
+            try
+            {
+                using var response = httpClient.GetAsync(new Uri(endpoint, WarmupPath)).GetAwaiter().GetResult();
+                return response.IsSuccessStatusCode;
+            }
+            catch { return false; }
+        }
+        if (IsReady())
+        {
+            Log.LogMessage(Microsoft.Build.Framework.MessageImportance.High, "Vite is ready at {0}", Url);
+            return true;
+        }
+        var start = new ProcessStartInfo
+        {
+            WorkingDirectory = WorkingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false
+        };
+        if (Command.StartsWith("node ", StringComparison.OrdinalIgnoreCase))
+        {
+            start.FileName = "node";
+            start.Arguments = Command.Substring(5);
+        }
+        else if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+        {
+            start.FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe";
+            start.Arguments = "/d /c " + Command;
+        }
+        else
+        {
+            start.FileName = "/bin/sh";
+            start.Arguments = "-lc \"" + Command.Replace("\"", "\\\"") + "\"";
+        }
+        var process = Process.Start(start);
+        if (process == null)
+        {
+            Log.LogError("Failed to start the Vite process.");
+            return false;
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(PidFile)!);
+        File.WriteAllText(PidFile, process.Id.ToString() + "|" + process.StartTime.ToUniversalTime().Ticks.ToString());
+        var deadline = DateTime.UtcNow.AddSeconds(45);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (process.HasExited)
+            {
+                Log.LogError("Vite exited with code {0} before becoming ready. Check Node.js and npm dependencies.", process.ExitCode);
+                return false;
+            }
+            if (IsReady())
+            {
+                Log.LogMessage(Microsoft.Build.Framework.MessageImportance.High, "Started and warmed Vite at {0}", Url);
+                return true;
+            }
+            Thread.Sleep(250);
+        }
+        Log.LogError("Vite did not become ready at {0} within 45 seconds.", Url);
+        return false;
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="AvaloniaReactStartViteForDebug"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(AvaloniaReactAutoStart)' == 'true' and '$(Configuration)' == 'Debug' and '$(DesignTimeBuild)' != 'true' and Exists('$(AvaloniaReactDevServerDirectory)\package.json')">
+    <Exec Command="npm ci" WorkingDirectory="$(AvaloniaReactDevServerDirectory)" Condition="!Exists('$(AvaloniaReactDevServerDirectory)\node_modules')" />
+    <AvaloniaReactStartDevServer WorkingDirectory="$(AvaloniaReactDevServerDirectory)" Url="$(AvaloniaReactDevServerUrl)" Command="$(AvaloniaReactDevServerCommand)" PidFile="$(TargetDir)avalonia-react-vite.pid" WarmupPath="$(AvaloniaReactDevServerWarmupPath)" />
+  </Target>
+</Project>
