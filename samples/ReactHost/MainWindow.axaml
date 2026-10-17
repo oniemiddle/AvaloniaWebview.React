@@ -4,13 +4,15 @@
         x:Class="ReactHost.MainWindow"
         Title="Avalonia + React"
         Width="1100"
-        Height="760">
+        Height="760"
+        Background="{DynamicResource SemiColorBackground0}">
   <Grid>
-    <react:AvaloniaReactWebView x:Name="ReactView" />
+    <react:AvaloniaReactWebView x:Name="ReactView"
+                                Background="{DynamicResource SemiColorBackground0}" />
 
     <!-- NativeWebView uses an offscreen WebView2 surface on Windows so Avalonia can render this overlay above it. -->
     <Border x:Name="LoadingOverlay"
-            Background="#F5F7FB"
+            Background="{DynamicResource SemiColorBackground0}"
             IsVisible="True">
       <StackPanel HorizontalAlignment="Center"
                   VerticalAlignment="Center"
@@ -18,19 +20,19 @@
         <Border Width="56"
                 Height="56"
                 CornerRadius="28"
-                Background="#E5EEFF"
+                Background="{DynamicResource SemiColorPrimaryLight}"
                 HorizontalAlignment="Center">
           <TextBlock Text="A"
                      FontSize="28"
                      FontWeight="Bold"
-                     Foreground="#3978E8"
+                     Foreground="{DynamicResource SemiColorPrimary}"
                      HorizontalAlignment="Center"
                      VerticalAlignment="Center" />
         </Border>
         <TextBlock Text="正在启动 Avalonia + React"
                    FontSize="18"
                    FontWeight="SemiBold"
-                   Foreground="#202938"
+                   Foreground="{DynamicResource SemiColorText0}"
                    HorizontalAlignment="Center" />
         <ProgressBar x:Name="LoadingIndicator"
                      Width="240"
@@ -39,11 +41,11 @@
         <TextBlock x:Name="LoadingDetail"
                    Text="正在初始化 WebView…"
                    FontSize="13"
-                   Foreground="#667085"
+                   Foreground="{DynamicResource SemiColorText2}"
                    HorizontalAlignment="Center" />
         <Button x:Name="RetryButton"
                 Content="重试加载"
-                Foreground="#3978E8"
+                Foreground="{DynamicResource SemiColorPrimary}"
                 HorizontalAlignment="Center"
                 IsVisible="False"
                 Click="RetryButton_OnClick" />

@@ -141,7 +141,7 @@ Then start the Avalonia host in Debug configuration. The Vite extension starts t
 dotnet run --project samples/ReactHost
 ```
 
-The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app notifies the Avalonia host after React mounts. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting. Vite hot reload continues to work inside the native WebView.
+The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app notifies the Avalonia host after React mounts. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting. Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so native loading and error states follow the same light/dark theme as the React UI.
 
 Build all three NuGet packages with `dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release`, `dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release`, and `dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release`.
 

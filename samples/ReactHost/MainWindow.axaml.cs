@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Media;
 using Avalonia.Platform;
 using ReactHost.Frontend;
 
@@ -25,7 +24,6 @@ public sealed partial class MainWindow : Window
         ReactView.NavigationStarted += (_, _) =>
         {
             LoadingOverlay.IsVisible = true;
-            LoadingOverlay.Background = new SolidColorBrush(Color.Parse("#F5F7FB"));
             LoadingIndicator.IsVisible = true;
             RetryButton.IsVisible = false;
             LoadingDetail.Text = "正在加载前端页面…";

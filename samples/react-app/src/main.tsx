@@ -3,7 +3,10 @@ import { postMessage, subscribe } from "@avalonia-react/bridge";
 import App from "./App";
 import "./style.css";
 
+let themeApplied = false;
+
 function applyTheme(theme: "light" | "dark") {
+  themeApplied = true;
   document.documentElement.dataset.theme = theme;
   if (theme === "dark") {
     document.body.setAttribute("theme-mode", "dark");
@@ -14,13 +17,24 @@ function applyTheme(theme: "light" | "dark") {
 
 subscribe<{ theme: "light" | "dark" }>("theme", ({ theme }) => applyTheme(theme));
 
-if (typeof window.invokeCSharpAction === "function") {
-  postMessage("theme:request", {});
-} else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-  applyTheme("dark");
-}
-
 const root = document.getElementById("root");
 if (root) {
-  createRoot(root).render(<App />);
+  if (typeof window.invokeCSharpAction === "function") {
+    postMessage("theme:request", {});
+
+    const startedAt = performance.now();
+    const renderWhenThemeIsReady = () => {
+      if (themeApplied || performance.now() - startedAt > 300) {
+        createRoot(root).render(<App />);
+      } else {
+        requestAnimationFrame(renderWhenThemeIsReady);
+      }
+    };
+    renderWhenThemeIsReady();
+  } else {
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      applyTheme("dark");
+    }
+    createRoot(root).render(<App />);
+  }
 }

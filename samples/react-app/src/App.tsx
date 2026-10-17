@@ -24,9 +24,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (typeof window.invokeCSharpAction === "function") {
-      postMessage("react:shell-ready", { frontend: "React 19" });
-    }
+    if (typeof window.invokeCSharpAction !== "function") return;
+
+    let canceled = false;
+    let frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
+        if (!canceled) {
+          postMessage("react:shell-ready", { frontend: "React 19" });
+        }
+      });
+    });
+
+    return () => {
+      canceled = true;
+      window.cancelAnimationFrame(frame);
+    };
   }, []);
 
   return (
