@@ -8,6 +8,7 @@
     <AvaloniaReactDevServerDirectory>$(MSBuildProjectDirectory)\..\react-app</AvaloniaReactDevServerDirectory>
     <AvaloniaReactDevServerWarmupPath>src/main.tsx</AvaloniaReactDevServerWarmupPath>
     <AvaloniaReactBridgeDirectory>$(MSBuildProjectDirectory)\..\..\client</AvaloniaReactBridgeDirectory>
+    <AvaloniaReactEmbeddedAssets>true</AvaloniaReactEmbeddedAssets>
     <!-- Debug serves the live Vite app; building the production bundle on every F5 is redundant. -->
     <AvaloniaReactBuildOnBuild Condition="'$(Configuration)' == 'Debug'">false</AvaloniaReactBuildOnBuild>
   </PropertyGroup>

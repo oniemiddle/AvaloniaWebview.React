@@ -18,6 +18,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
 {
     private static readonly Lazy<bool> DevServerLifetime = new(RegisterDevServerLifetime);
     private readonly Dictionary<string, ApiRegistration> _apis = new(StringComparer.Ordinal);
+    private IAssetTransport? _assetTransport;
+    private Window? _assetServerWindow;
 
     /// <summary>
     /// Creates a React WebView and listens for messages posted by the React client package.
@@ -34,6 +36,87 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// Raised when JavaScript sends a message using <c>postMessage</c> from <c>@avalonia-react/bridge</c>.
     /// </summary>
     public event EventHandler<ReactMessageReceivedEventArgs>? MessageReceived;
+
+    /// <summary>
+    /// Starts a loopback HTTP server for a published frontend and navigates the WebView to it.
+    /// </summary>
+    /// <param name="configure">Configures the asset root, SPA fallback, and caching.</param>
+    /// <returns>The base URI served by the embedded asset server.</returns>
+    /// <remarks>
+    /// The server binds to <c>127.0.0.1</c> on an ephemeral port and stops when the host window closes.
+    /// Use this for Release builds after the frontend has been copied to <c>wwwroot</c>; point
+    /// <see cref="NativeWebView.Source"/> at the Vite server during development instead.
+    /// </remarks>
+    public Uri UseEmbeddedAssets(Action<EmbeddedAssetOptions>? configure = null)
+    {
+        if (_assetTransport is not null)
+        {
+            throw new InvalidOperationException("Embedded assets are already enabled.");
+        }
+
+        var options = new EmbeddedAssetOptions();
+        configure?.Invoke(options);
+
+        var server = new EmbeddedAssetServer(options);
+        _assetTransport = server;
+        Source = server.BaseUri;
+
+        if (TopLevel.GetTopLevel(this) is Window window)
+        {
+            AttachAssetServerWindow(window);
+        }
+
+        return server.BaseUri;
+    }
+
+    /// <inheritdoc />
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (_assetTransport is not null && TopLevel.GetTopLevel(this) is Window window)
+        {
+            AttachAssetServerWindow(window);
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        DetachAssetServerWindow();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void AttachAssetServerWindow(Window window)
+    {
+        if (ReferenceEquals(_assetServerWindow, window))
+        {
+            return;
+        }
+
+        DetachAssetServerWindow();
+        _assetServerWindow = window;
+        window.Closed += HandleAssetServerWindowClosed;
+    }
+
+    private void DetachAssetServerWindow()
+    {
+        if (_assetServerWindow is not null)
+        {
+            _assetServerWindow.Closed -= HandleAssetServerWindowClosed;
+            _assetServerWindow = null;
+        }
+    }
+
+    private void HandleAssetServerWindowClosed(object? sender, EventArgs e)
+    {
+        DetachAssetServerWindow();
+        var transport = _assetTransport;
+        _assetTransport = null;
+        if (transport is not null)
+        {
+            _ = transport.DisposeAsync().AsTask();
+        }
+    }
 
     /// <summary>
     /// Registers an implementation of a TypeScript-generated API contract so React can invoke its methods.

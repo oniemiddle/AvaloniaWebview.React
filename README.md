@@ -44,7 +44,7 @@ Implement the generated interface and register it on the WebView with `webView.R
 
 ## Host a React development server
 
-Add the control to an Avalonia view. Point it to the Vite development server while developing. The included host defaults to the Vite URL; set `AVALONIA_REACT_URL` to the deployed frontend URL when launching the host in production.
+Add the control to an Avalonia view. Point it to the Vite development server while developing. The included host uses Vite in Debug and embedded assets in Release; set `AVALONIA_REACT_URL` to the deployed frontend URL to override both.
 
 ```xml
 <Window xmlns="https://github.com/avaloniaui"
@@ -55,6 +55,23 @@ Add the control to an Avalonia view. Point it to the Vite development server whi
 ```
 
 Start the frontend with `npm run dev -- --host 0.0.0.0`. Keep the Vite port in sync with the `Source` URI.
+
+### Serve published assets
+
+Release builds copy the Vite output to `wwwroot` next to the host executable. Call `UseEmbeddedAssets()` instead of assigning a dev-server URL:
+
+```csharp
+reactView.UseEmbeddedAssets();
+```
+
+This starts a loopback HTTP server on an ephemeral port and serves `wwwroot` with:
+
+- SPA fallback to `index.html` for extensionless routes;
+- immutable cache headers for files under `assets/` and `no-cache` for `index.html`;
+- `ETag`, `HEAD`, and single-range requests;
+- path traversal protection and a strict `Host` header check.
+
+Configure the root directory, fallback file, or caching through `EmbeddedAssetOptions`. The server binds only to `127.0.0.1` and stops when the host window closes. Set `AVALONIA_REACT_EMBEDDED=1` in a Debug build to test the published path without switching to Release. On macOS and iOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
 
 ## React to Avalonia messages
 

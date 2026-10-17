@@ -43,10 +43,28 @@ public sealed partial class MainWindow : Window
             }
         };
 
+        // Configure the source before attaching: NativeWebView navigates as soon as it enters the visual tree.
+        // Release serves the published bundle from wwwroot; Debug uses the Vite server unless overridden.
         var configuredUrl = Environment.GetEnvironmentVariable("AVALONIA_REACT_URL");
-        var source = string.IsNullOrWhiteSpace(configuredUrl)
-            ? new Uri("http://127.0.0.1:5173/")
-            : new Uri(configuredUrl, UriKind.Absolute);
+        if (!string.IsNullOrWhiteSpace(configuredUrl))
+        {
+            ReactView.Source = new Uri(configuredUrl, UriKind.Absolute);
+        }
+        else
+        {
+#if DEBUG
+            if (Environment.GetEnvironmentVariable("AVALONIA_REACT_EMBEDDED") == "1")
+            {
+                ReactView.UseEmbeddedAssets();
+            }
+            else
+            {
+                ReactView.Source = new Uri("http://127.0.0.1:5173/");
+            }
+#else
+            ReactView.UseEmbeddedAssets();
+#endif
+        }
 
         ReactView.MessageReceived += (_, message) =>
         {
@@ -55,10 +73,6 @@ public sealed partial class MainWindow : Window
                 LoadingOverlay.IsVisible = false;
             }
         };
-
-        // Configure the bridge and WebView environment first, then queue navigation immediately.
-        // NativeWebView starts the browser as soon as it is attached to the window.
-        ReactView.Source = source;
     }
 
     private void RetryButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

@@ -5,6 +5,7 @@
     <AvaloniaReactBuildCommand Condition="'$(AvaloniaReactBuildCommand)' == ''">npm run build</AvaloniaReactBuildCommand>
     <AvaloniaReactInstallCommand Condition="'$(AvaloniaReactInstallCommand)' == ''">npm ci</AvaloniaReactInstallCommand>
     <AvaloniaReactBuildOnBuild Condition="'$(AvaloniaReactBuildOnBuild)' == ''">true</AvaloniaReactBuildOnBuild>
+    <AvaloniaReactEmbeddedAssets Condition="'$(AvaloniaReactEmbeddedAssets)' == ''">false</AvaloniaReactEmbeddedAssets>
   </PropertyGroup>
 
   <Target Name="AvaloniaReactBuildBridge"
@@ -42,5 +43,11 @@
     <Copy SourceFiles="@(_AvaloniaReactPublishOutput)"
           DestinationFiles="@(_AvaloniaReactPublishOutput->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="AvaloniaReactVerifyEmbeddedAssets"
+          AfterTargets="AvaloniaReactCopyBuildOutput"
+          Condition="'$(AvaloniaReactEmbeddedAssets)' == 'true' and !Exists('$(TargetDir)wwwroot\index.html')">
+    <Warning Text="AvaloniaReactEmbeddedAssets is enabled, but $(TargetDir)wwwroot\index.html is missing. Ensure the frontend is built and copied before calling UseEmbeddedAssets." />
   </Target>
 </Project>
