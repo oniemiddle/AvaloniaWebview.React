@@ -148,6 +148,26 @@ webView.Reload();
 - `ApiInvokeTimeout` (30 seconds by default) returns a timeout error to React when a host API implementation runs too long; set it to `TimeSpan.Zero` to disable.
 - `RegisterApi` rejects duplicate API names; `UnregisterApi` removes one.
 
+### Native WebView capabilities
+
+`AvaloniaReactWebView` derives from `NativeWebView`, so the platform capabilities are available directly: `UserAgent`, `CanGoBack`/`CanGoForward`, `GoBack`/`GoForward`, `Stop`, `Navigate`, `ShowPrintUI`, `PrintToPdfStreamAsync`, `TryGetCookieManager`, `TryGetCommandManager`, and `AdapterInfo`. `ReactHostView` forwards the common ones, so applications using the overlay do not need to reach through `WebView`:
+
+```csharp
+reactHost.UserAgent = "MyApp/1.0";
+if (reactHost.CanGoBack) reactHost.GoBack();
+reactHost.ShowPrintUI();
+
+await using var pdf = await reactHost.PrintToPdfStreamAsync();
+
+var cookies = reactHost.TryGetCookieManager();
+if (cookies is not null)
+{
+    var current = await cookies.GetCookiesAsync();
+}
+```
+
+`GetAdapterDiagnostics()` returns the platform `DetailedWebViewAdapterInfo` when available, and `ReactHostView` exposes `AdapterInfo`, `AdapterDiagnostics`, `IsWebViewRuntimeInstalled`, and `WebViewUnavailableReason`. If the platform adapter is missing or unsupported, the host view shows the runtime reason in its error overlay instead of leaving a blank loading screen.
+
 ### Serve published assets
 
 Release builds copy the Vite output to `wwwroot` next to the host executable. Call `UseEmbeddedAssets()` instead of assigning a dev-server URL:

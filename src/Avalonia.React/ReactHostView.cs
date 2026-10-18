@@ -2,9 +2,11 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.React.EmbeddedAssets;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.Layout;
 
 namespace Avalonia.React;
 
@@ -22,6 +24,7 @@ public sealed class ReactHostView : Grid, IDisposable
     private readonly Button _retryButton;
     private readonly DispatcherTimer _readyTimer;
     private bool _overlayTimedOut;
+    private string? _runtimeError;
 
     /// <summary>Creates the host view, its WebView child, and the built-in overlay.</summary>
     public ReactHostView()
@@ -38,7 +41,7 @@ public sealed class ReactHostView : Grid, IDisposable
             IsIndeterminate = true,
             Width = 220,
             Height = 4,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center
         };
         _statusText = new TextBlock
         {
@@ -80,6 +83,7 @@ public sealed class ReactHostView : Grid, IDisposable
 
         WebView.LoadStateChanged += HandleLoadStateChanged;
         WebView.BridgeReady += HandleBridgeReady;
+        WebView.AdapterCreated += HandleAdapterCreated;
         ActualThemeVariantChanged += (_, _) => ApplyOverlayTheme();
         ApplyOverlayTheme();
         UpdateOverlay();
@@ -95,6 +99,7 @@ public sealed class ReactHostView : Grid, IDisposable
     public void Shutdown()
     {
         _readyTimer.Stop();
+        _runtimeError = null;
         WebView.Shutdown();
         _overlay.IsVisible = false;
     }
@@ -161,6 +166,32 @@ public sealed class ReactHostView : Grid, IDisposable
 
     /// <summary>Gets whether the built-in overlay is currently visible.</summary>
     public bool IsOverlayVisible => _overlay.IsVisible;
+
+    /// <summary>Gets the WebView adapter information, when the platform exposes it.</summary>
+    public WebViewAdapterInfo? AdapterInfo => WebView.AdapterInfo;
+
+    /// <summary>Gets detailed WebView adapter diagnostics, when available.</summary>
+    public DetailedWebViewAdapterInfo? AdapterDiagnostics => WebView.GetAdapterDiagnostics();
+
+    /// <summary>Gets whether the WebView runtime is installed, or <see langword="null"/> when unknown.</summary>
+    public bool? IsWebViewRuntimeInstalled => AdapterDiagnostics?.IsInstalled;
+
+    /// <summary>Gets the runtime unavailability reason, or <see langword="null"/> when the runtime is usable.</summary>
+    public string? WebViewUnavailableReason =>
+        _runtimeError ?? ReactAdapterDiagnostics.GetUnavailableReason(WebView.GetAdapterDiagnostics());
+
+    /// <summary>Gets or sets the WebView user agent.</summary>
+    public string? UserAgent
+    {
+        get => WebView.UserAgent;
+        set => WebView.UserAgent = value;
+    }
+
+    /// <summary>Gets whether the WebView can navigate back.</summary>
+    public bool CanGoBack => WebView.CanGoBack;
+
+    /// <summary>Gets whether the WebView can navigate forward.</summary>
+    public bool CanGoForward => WebView.CanGoForward;
 
     /// <summary>Gets or sets whether the built-in loading/error overlay is used. Defaults to <see langword="true"/>.</summary>
     public bool ShowOverlay { get; set; } = true;
@@ -247,6 +278,35 @@ public sealed class ReactHostView : Grid, IDisposable
     /// <summary>Reloads the current page.</summary>
     public bool Reload() => WebView.Reload();
 
+    /// <summary>Navigates the WebView back in its history.</summary>
+    public bool GoBack() => WebView.GoBack();
+
+    /// <summary>Navigates the WebView forward in its history.</summary>
+    public bool GoForward() => WebView.GoForward();
+
+    /// <summary>Stops the current navigation.</summary>
+    public bool Stop() => WebView.Stop();
+
+    /// <summary>Navigates the WebView to an explicit URI.</summary>
+    public void Navigate(Uri source) => WebView.Navigate(source);
+
+    /// <summary>Opens the platform print UI for the current page.</summary>
+    public void ShowPrintUI() => WebView.ShowPrintUI();
+
+    /// <summary>Renders the current page to a PDF stream.</summary>
+    public Task<Stream> PrintToPdfStreamAsync() => WebView.PrintToPdfStreamAsync();
+
+    /// <summary>Renders the current page to a PDF stream with the given settings.</summary>
+#pragma warning disable CA1416 // The platform WebView reports unsupported printing scenarios at runtime.
+    public Task<Stream> PrintToPdfStreamAsync(WebViewPrintSettings settings) => WebView.PrintToPdfStreamAsync(settings);
+#pragma warning restore CA1416
+
+    /// <summary>Gets the platform cookie manager, when the platform supports it.</summary>
+    public NativeWebViewCookieManager? TryGetCookieManager() => WebView.TryGetCookieManager();
+
+    /// <summary>Gets the platform command manager, when the platform supports it.</summary>
+    public NativeWebViewCommandManager? TryGetCommandManager() => WebView.TryGetCommandManager();
+
     /// <summary>Applies <see cref="SourceMode"/> immediately.</summary>
     public bool ApplySourceMode() => WebView.ApplySourceMode();
 
@@ -258,6 +318,16 @@ public sealed class ReactHostView : Grid, IDisposable
         Action<AssemblyEmbeddedAssetOptions>? configureExtraction = null,
         Action<EmbeddedAssetOptions>? configureServer = null) =>
         WebView.UseAssemblyEmbeddedAssets(configureExtraction, configureServer);
+
+    private void HandleAdapterCreated(object? sender, WebViewAdapterEventArgs args)
+    {
+        var reason = ReactAdapterDiagnostics.GetUnavailableReason(WebView.GetAdapterDiagnostics());
+        if (!string.Equals(_runtimeError, reason, StringComparison.Ordinal))
+        {
+            _runtimeError = reason;
+            UpdateOverlay();
+        }
+    }
 
     private void HandleLoadStateChanged(object? sender, ReactLoadStateChangedEventArgs args)
     {
@@ -288,18 +358,23 @@ public sealed class ReactHostView : Grid, IDisposable
     private void UpdateOverlay()
     {
         var failed = WebView.LoadState == ReactLoadState.Failed;
-        _overlay.IsVisible = ReactOverlayPolicy.ShouldShow(
-            ShowOverlay,
-            WebView.LoadState,
-            WebView.IsBridgeReady,
-            WaitForBridgeReady,
-            _overlayTimedOut);
+        var runtimeFailed = _runtimeError is not null;
+        _overlay.IsVisible = runtimeFailed
+            ? ShowOverlay
+            : ReactOverlayPolicy.ShouldShow(
+                ShowOverlay,
+                WebView.LoadState,
+                WebView.IsBridgeReady,
+                WaitForBridgeReady,
+                _overlayTimedOut);
 
-        _loadingIndicator.IsVisible = !failed;
-        _retryButton.IsVisible = failed;
-        _statusText.Text = failed
-            ? string.Format(CultureInfo.CurrentCulture, ErrorTextFormat, WebView.LoadError)
-            : LoadingText;
+        _loadingIndicator.IsVisible = !failed && !runtimeFailed;
+        _retryButton.IsVisible = failed || runtimeFailed;
+        _statusText.Text = runtimeFailed
+            ? _runtimeError!
+            : failed
+                ? string.Format(CultureInfo.CurrentCulture, ErrorTextFormat, WebView.LoadError)
+                : LoadingText;
     }
 
     /// <inheritdoc />

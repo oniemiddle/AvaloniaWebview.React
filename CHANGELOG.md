@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-10-18
+
+### Added
+
+- `ReactHostView` now forwards native WebView capabilities: `UserAgent`, `CanGoBack`/`CanGoForward`,
+  `GoBack`/`GoForward`, `Stop`, `Navigate`, `ShowPrintUI`, `PrintToPdfStreamAsync` (both overloads),
+  `TryGetCookieManager`, `TryGetCommandManager`, and `AdapterInfo`. The same capabilities were always
+  available directly on `AvaloniaReactWebView` through its `NativeWebView` base class.
+- `AvaloniaReactWebView.GetAdapterDiagnostics()` and `ReactHostView.AdapterDiagnostics` /
+  `IsWebViewRuntimeInstalled` / `WebViewUnavailableReason` expose platform runtime diagnostics.
+- `ReactHostView` detects an installed-but-unsupported or missing WebView runtime when the adapter is
+  created and shows the reason in its error overlay, instead of leaving the loading state visible.
+- Adapter diagnostic tests (5); the control suite now has 93 tests.
+
+### Changed
+
+- Package version is `0.12.0`.
+
+### Documentation
+
+- Documented native WebView passthrough, cookie/print/history examples, and runtime diagnostics.
+
 ## [0.11.0] - 2026-10-18
 
 ### Added

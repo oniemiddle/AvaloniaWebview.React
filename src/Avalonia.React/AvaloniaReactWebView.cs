@@ -77,6 +77,23 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <summary>Gets whether <see cref="Shutdown"/> has been called.</summary>
     public bool IsShutdown => _isShutdown;
 
+    /// <summary>
+    /// Gets detailed diagnostics for the underlying WebView adapter, or <see langword="null"/> when
+    /// the adapter has not been created yet or the platform does not expose diagnostics.
+    /// </summary>
+    public DetailedWebViewAdapterInfo? GetAdapterDiagnostics()
+    {
+        try
+        {
+            var info = AdapterInfo;
+            return info is null ? null : WebViewAdapterInfo.GetAdapterInfo(info.Type);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Gets whether the React client has sent the <c>avalonia:ready</c> handshake for the current page.</summary>
     public bool IsBridgeReady => _bridgeReady;
 
