@@ -80,6 +80,16 @@ The lower-level `invokeHostApi<T>("HostApi", "getGreeting", "Ada")` form remains
 
 Host API methods can observe cancellation. Set `<AvaloniaReactGenerateCancellationToken>true</AvaloniaReactGenerateCancellationToken>` in the host project; generated interfaces then append `CancellationToken cancellationToken = default` to every method. The bridge passes a token that is canceled when React aborts or times out a call, when the page navigates or fails to load, and on shutdown. The bridge client sends `avalonia:invoke:cancel` automatically in those cases. The option defaults to `false`, so existing contracts and implementations are unchanged.
 
+## React client package
+
+The frontend bridge is published as `@avalonia-react/bridge`:
+
+```sh
+npm install @avalonia-react/bridge
+```
+
+It is ESM-only, includes TypeScript declarations, and forwards the reserved `avalonia:*` messages, host API calls, theme requests, JavaScript errors, cancellation, and timeouts. Inside this repository the sample uses the local package through `file:../../client`; run `npm --prefix client run build` before installing it.
+
 ## Host a React development server
 
 Add the control to an Avalonia view. Point it to the Vite development server while developing, or let `SourceMode="Auto"` select the source. The included host uses Vite in Debug and embedded assets in Release; set `Source` or `SourceMode` to override both.
@@ -232,7 +242,13 @@ reactView.UseAssemblyEmbeddedAssets(
 
 ## React to Avalonia messages
 
-The repository includes an optional TypeScript helper in [`client`](client/README.md). The NuGet package itself needs no npm dependency: React can call Avalonia's built-in JavaScript bridge directly.
+The TypeScript helper is published as [`@avalonia-react/bridge`](client/README.md):
+
+```sh
+npm install @avalonia-react/bridge
+```
+
+The NuGet package itself needs no npm dependency: React can call Avalonia's built-in JavaScript bridge directly.
 
 ```tsx
 import { postMessage, requestTheme, signalReady, subscribe } from "@avalonia-react/bridge";
@@ -340,7 +356,15 @@ dotnet run --project samples/ReactHost -f net10.0
 
 The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app calls `signalReady()` from `@avalonia-react/bridge` after React mounts. The sample window uses `ReactHostView` with `SourceMode="Auto"` and `WaitForBridgeReady="True"`, so the built-in themed overlay replaces the previous hand-written loading/error UI; the code-behind only registers the generated API and handles the demo messages. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting, and the "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
 
-Build all three NuGet packages with `dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release`, `dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release`, and `dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release`.
+Build all three NuGet packages with:
+
+```sh
+dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release
+dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release
+dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release
+```
+
+Build the npm tarball with `cd client && npm pack --pack-destination ../artifacts/packages`. See [RELEASING.md](RELEASING.md) for the complete release checklist.
 
 ## Build and test
 
@@ -350,13 +374,14 @@ dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
 dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
 npm --prefix client run build
 npm --prefix client test
+npm --prefix client run verify:package
 ```
 
-The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, JavaScript error parsing, and the loopback asset server (including keep-alive and conditional requests). The generator tests compile generated interfaces and assert the diagnostics. The client tests run on Node's built-in test runner and exercise messaging, the typed proxy, timeouts, aborts, page unload, and error forwarding. GitHub Actions runs all three suites on Windows and Linux and packs all three packages.
+The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, JavaScript error parsing, and the loopback asset server (including keep-alive and conditional requests). The generator tests compile generated interfaces and assert the diagnostics. The client tests run on Node's built-in test runner and exercise messaging, the typed proxy, timeouts, aborts, page unload, and error forwarding. GitHub Actions runs all three suites on Windows and Linux and packs the four publishable packages.
 
 ## Release
 
-Set `AvaloniaReactVersion` in `Directory.Build.props`, commit, and push a matching `vX.Y.Z` tag. The release workflow validates the tag, runs all tests, packs the three packages, publishes them to NuGet when the `NUGET_API_KEY` repository secret is configured, and creates a GitHub release with the `.nupkg` files attached.
+Set `AvaloniaReactVersion` in `Directory.Build.props`, update `client/package.json` and `client/package-lock.json`, commit, and push a matching `vX.Y.Z` tag. The workflow validates all versions, runs tests, verifies package contents, publishes the NuGet packages (including `.snupkg` symbols) when `NUGET_API_KEY` is configured, publishes `@avalonia-react/bridge` when `NPM_TOKEN` is configured, and creates a GitHub release with the `.nupkg`, `.snupkg`, and `.tgz` files. See [RELEASING.md](RELEASING.md) for details.
 
 ## Trimming and Native AOT
 

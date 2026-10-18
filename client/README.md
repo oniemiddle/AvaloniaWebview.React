@@ -1,9 +1,15 @@
-# React bridge client
+# @avalonia-react/bridge
 
-This directory contains the TypeScript package used by the React frontend hosted in `AvaloniaReactWebView`.
+TypeScript bridge used by the React frontend hosted in `AvaloniaReactWebView`. The package is ESM-only and ships TypeScript declarations.
 
 ```sh
-npm install ../client
+npm install @avalonia-react/bridge
+```
+
+When working inside the Avalonia.React repository, point the example app at the local package instead:
+
+```sh
+npm install ../../client
 ```
 
 Use `postMessage(type, payload)` to send a JSON message to .NET. Use `subscribe(type, listener)` to receive host messages and call the returned function to unsubscribe.
@@ -42,3 +48,7 @@ When a call times out, is aborted, or the page unloads, the client also sends th
 The client also forwards `window` errors and unhandled promise rejections as the reserved `avalonia:error` message, which raises `AvaloniaReactWebView.JavaScriptError` on the host. Duplicate errors are reported at most once, and reporting is disabled when the bridge is unavailable.
 
 The message format is `{ "type": string, "payload": any JSON value }`. API calls use a request ID and return either a result or an error through the same message bridge.
+
+The module can be imported in Node/SSR environments without a `window`; `isBridgeAvailable()` then returns `false`, and `subscribe()` returns a no-op unsubscribe function. The package is ESM-only and includes `dist/index.d.ts` alongside `dist/index.js`.
+
+Maintainers can validate the publishable tarball with `npm run verify:package`; see [RELEASING.md](https://github.com/oniemiddle/Avalonia.React/blob/main/RELEASING.md) for the full release checklist.

@@ -1,11 +1,16 @@
 {
   "name": "@avalonia-react/bridge",
-  "version": "0.1.0",
+  "version": "0.16.0",
   "description": "TypeScript bridge for hosting React inside Avalonia.React",
   "license": "MIT",
+  "author": "Avalonia.React contributors",
+  "homepage": "https://github.com/oniemiddle/Avalonia.React#readme",
+  "bugs": {
+    "url": "https://github.com/oniemiddle/Avalonia.React/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/oniemiddle/Avalonia.React.git",
+    "url": "git+https://github.com/oniemiddle/Avalonia.React.git",
     "directory": "client"
   },
   "engines": {
@@ -15,21 +20,34 @@
     "avalonia",
     "react",
     "webview",
-    "bridge"
+    "bridge",
+    "typescript"
   ],
-  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --test test/bridge.test.mjs"
+    "test": "node --test test/bridge.test.mjs test/ssr.test.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test && npm run verify:package"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

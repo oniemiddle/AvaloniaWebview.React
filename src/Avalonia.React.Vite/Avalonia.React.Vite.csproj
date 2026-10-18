@@ -14,10 +14,12 @@
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts\packages</PackageOutputPath>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- Targets-only package: there is no build output to put in a symbols package. -->
+    <IncludeSymbols>false</IncludeSymbols>
   </PropertyGroup>
   <ItemGroup>
     <None Update="build\Avalonia.React.Vite.targets" Pack="true" PackagePath="buildTransitive\Avalonia.React.Vite.targets" />
     <None Include="README.md" Pack="true" PackagePath="README.md" />
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="LICENSE" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

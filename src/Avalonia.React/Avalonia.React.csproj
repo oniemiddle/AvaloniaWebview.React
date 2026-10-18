@@ -23,7 +23,7 @@
   <ItemGroup>
     <PackageReference Include="Avalonia.Controls.WebView" Version="$(AvaloniaVersion)" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="LICENSE" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="build\Avalonia.React.targets" Pack="true" PackagePath="buildTransitive\Avalonia.React.targets" />
     <InternalsVisibleTo Include="Avalonia.React.Tests" />
   </ItemGroup>

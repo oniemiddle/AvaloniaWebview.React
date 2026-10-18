@@ -85,6 +85,10 @@ export function requestTheme(): boolean {
 
 /** Subscribes to messages sent from AvaloniaReactWebView.PostMessageAsync. */
 export function subscribe<T>(type: string, listener: (payload: T) => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
   const handler = (event: Event) => {
     const messageEvent = event as CustomEvent<AvaloniaReactMessage<T>>;
     if (messageEvent.detail?.type === type) {

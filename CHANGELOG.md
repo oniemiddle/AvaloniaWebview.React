@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-10-18
+
+### Added
+
+- `@avalonia-react/bridge` is now publishable: version-aligned with the .NET packages, public npm
+  metadata, `files`/`exports`/`publishConfig`, a packaged LICENSE, and a `verify:package` script that
+  inspects the npm tarball.
+- The bridge module is safe to import without a browser `window` (SSR/Node), and a test covers the
+  package import.
+- `RELEASING.md` documents version sync, required secrets, local verification, and package contents.
+- GitHub Actions now validates all package versions, verifies NuGet/npm package contents, publishes
+  the npm package when `NPM_TOKEN` is set, and uploads `.nupkg`, `.snupkg`, and `.tgz` artifacts.
+
+### Changed
+
+- NuGet package quality: deterministic CI builds, `.snupkg` symbols for `Avalonia.React`, release
+  notes metadata, and root-level LICENSE files in all three packages. Analyzer/targets-only packages
+  no longer attempt to produce empty symbol packages.
+- `README.md` and the client README document installation from NuGet/npm and local repository usage.
+- Package version is `0.16.0`; client version is `0.16.0`.
+
+### Verification
+
+- `npm --prefix client test`: 12 tests.
+- Package content checks: `npm --prefix client run verify:package` and
+  `eng/verify-nuget-packages.ps1`.
+- A packed npm tarball was installed in a clean consumer, imported from Node, and type-checked.
+
 ## [0.15.0] - 2026-10-18
 
 ### Added

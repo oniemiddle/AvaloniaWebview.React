@@ -18,6 +18,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- Analyzer-only package: there is no build output to put in a symbols package. -->
+    <IncludeSymbols>false</IncludeSymbols>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts\packages</PackageOutputPath>
     <!-- Analyzer projects must not inherit the application's trimming/publish settings. -->
     <PublishTrimmed>false</PublishTrimmed>
@@ -28,7 +30,7 @@
     <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers\dotnet\cs\Avalonia.React.SourceGenerator.dll" Visible="false" />
     <None Update="build\Avalonia.React.SourceGenerator.props" Pack="true" PackagePath="buildTransitive\Avalonia.React.SourceGenerator.props" />
     <None Include="README.md" Pack="true" PackagePath="README.md" />
-    <None Include="..\..\LICENSE" Pack="true" PackagePath="LICENSE" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
