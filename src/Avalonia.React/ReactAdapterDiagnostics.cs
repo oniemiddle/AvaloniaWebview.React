@@ -9,12 +9,7 @@ internal static class ReactAdapterDiagnostics
 {
     public static string? GetUnavailableReason(DetailedWebViewAdapterInfo? info)
     {
-        if (info is null)
-        {
-            return null;
-        }
-
-        if (info.IsInstalled && info.IsSupported)
+        if (info is null or { IsInstalled: true, IsSupported: true })
         {
             return null;
         }

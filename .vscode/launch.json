@@ -6,6 +6,7 @@
       "type": "coreclr",
       "request": "launch",
       "program": "${workspaceFolder}/samples/ReactHost/bin/Debug/net10.0/ReactHost.dll",
+      "preLaunchTask": "build ReactHost",
       "args": [],
       "cwd": "${workspaceFolder}"
     }

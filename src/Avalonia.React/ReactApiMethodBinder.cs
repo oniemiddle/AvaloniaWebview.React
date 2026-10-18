@@ -28,7 +28,7 @@ internal static class ReactApiMethodBinder
         JsonSerializerOptions? serializerOptions = null)
     {
         var tokenIndex = parameters.Length > 0 &&
-            parameters[parameters.Length - 1].ParameterType == typeof(CancellationToken)
+            parameters[^1].ParameterType == typeof(CancellationToken)
                 ? parameters.Length - 1
                 : -1;
         var jsonParameterCount = tokenIndex >= 0 ? tokenIndex : parameters.Length;
