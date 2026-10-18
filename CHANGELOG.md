@@ -5,19 +5,6 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- Resource cleanup APIs: `ClearBrowserDataAsync`/`ClearCookiesAsync` for cookies, localStorage,
-  sessionStorage, CacheStorage, IndexedDB, and service workers, plus
-  `ReactWebViewResources.ClearExtractedAssetsAsync()` for assembly-embedded frontend temp files.
-- Fixed embedded-asset origin support: `EmbeddedAssetOptions.Port` and
-  `EmbeddedAssetsPort` on the controls keep the loopback origin stable across restarts for
-  origin-scoped browser storage and fixed callback URLs.
-- Native WebView E2E smoke harness covering ready, host APIs, host-to-React calls, fixed ports, and
-  localStorage cleanup, plus a Windows CI job.
-
 ## [0.18.0] - 2026-10-18
 
 ### Added
@@ -36,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-window support: identical embedded-asset configurations share one reference-counted
   loopback server, and `ReactWebViewSession.Shared` keeps cookies/localStorage consistent across
   windows. `CreateEphemeral()` provides isolated sessions.
+- Resource cleanup APIs: `ClearBrowserDataAsync`/`ClearCookiesAsync` for cookies, localStorage,
+  sessionStorage, CacheStorage, IndexedDB, and service workers, plus
+  `ReactWebViewResources.ClearExtractedAssetsAsync()` for assembly-embedded frontend temp files.
+- Fixed embedded-asset origin support: `EmbeddedAssetOptions.Port` and
+  `EmbeddedAssetsPort` on the controls keep the loopback origin stable across restarts for
+  origin-scoped browser storage and fixed callback URLs.
+- Native WebView E2E smoke harness covering ready, host APIs, host-to-React calls, fixed ports, and
+  localStorage cleanup, plus a Windows CI job.
 
 ## [0.17.0] - 2026-10-18
 
