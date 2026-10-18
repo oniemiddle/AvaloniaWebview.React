@@ -273,6 +273,8 @@ npm install
 
 Then start the Avalonia host in Debug configuration. The sample multi-targets the Windows WebView2 host and the cross-platform target; pass `-f` to select one. The Vite extension starts the frontend automatically; Vite hot reload continues inside the official native WebView.
 
+VS Code users can select the **ReactHost** launch configuration (or **ReactHost (cross-platform)**) from `.vscode/launch.json`; the matching build tasks are in `.vscode/tasks.json`.
+
 ```sh
 # Windows (WebView2)
 dotnet run --project samples/ReactHost -f net10.0-windows

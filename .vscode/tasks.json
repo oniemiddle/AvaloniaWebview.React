@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build ReactHost",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/samples/ReactHost/ReactHost.csproj",
+        "-c",
+        "Debug",
+        "-f",
+        "net10.0-windows"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "build ReactHost (cross-platform)",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/samples/ReactHost/ReactHost.csproj",
+        "-c",
+        "Debug",
+        "-f",
+        "net10.0"
+      ],
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ReactHost",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build ReactHost",
+      "program": "${workspaceFolder}/samples/ReactHost/bin/Debug/net10.0-windows/ReactHost.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    },
+    {
+      "name": "ReactHost (cross-platform)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build ReactHost (cross-platform)",
+      "program": "${workspaceFolder}/samples/ReactHost/bin/Debug/net10.0/ReactHost.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    }
+  ]
+}
