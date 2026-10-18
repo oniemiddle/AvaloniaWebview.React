@@ -6,12 +6,11 @@
         Width="1100"
         Height="760"
         Background="{DynamicResource SemiColorBackground0}">
-  <!-- ReactHostView supplies the loading/error overlay; EnableWindowsOffscreenComposition lets
-       Avalonia content compose above WebView2. WaitForBridgeReady hides the overlay after the
-       React client calls signalReady(), with a fallback timeout. -->
+  <!-- ReactHostView supplies the loading/error overlay and enables the Windows composition needed
+       to render it above WebView2. WaitForBridgeReady hides the overlay after the React client
+       calls signalReady(), with a fallback timeout. -->
   <react:ReactHostView x:Name="ReactHost"
                        SourceMode="Auto"
-                       EnableWindowsOffscreenComposition="True"
                        WaitForBridgeReady="True"
                        BridgeReadyTimeout="0:0:10"
                        LoadingText="正在启动 Avalonia + React…"

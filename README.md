@@ -76,8 +76,7 @@ Start the frontend with `npm run dev -- --host 0.0.0.0`. Keep the Vite port in s
 `SourceMode="Auto"` removes the usual Debug/Release branching from the application:
 
 ```xml
-<react:AvaloniaReactWebView SourceMode="Auto"
-                            EnableWindowsOffscreenComposition="True" />
+<react:AvaloniaReactWebView SourceMode="Auto" />
 ```
 
 The Avalonia.React MSBuild targets emit assembly metadata into the host executable: Debug builds resolve `Auto` to the Vite server, other configurations resolve to embedded assets (or `AssemblyEmbeddedAssets` when `AvaloniaReactEmbedAssetsInAssembly` is enabled). Override the defaults with `AvaloniaReactDefaultSourceMode`, `AvaloniaReactDevServerUrl`, or `AvaloniaReactEnableDevTools`, or set `SourceMode` to `Manual`, `DevServer`, `EmbeddedAssets`, or `AssemblyEmbeddedAssets`. Set `AvaloniaReactEmitAssemblyMetadata=false` to opt out of the generated metadata. `Source` is only assigned when the control enters the visual tree, so the source can be configured from XAML or a constructor.
@@ -89,7 +88,6 @@ The Avalonia.React MSBuild targets emit assembly metadata into the host executab
 ```xml
 <react:ReactHostView x:Name="ReactHost"
                      SourceMode="Auto"
-                     EnableWindowsOffscreenComposition="True"
                      WaitForBridgeReady="True"
                      LoadingText="正在启动 Avalonia + React…"
                      RetryText="重试加载"
@@ -121,7 +119,7 @@ webView.Reload();
 
 - `ExternalNavigationPolicy` defaults to `OpenInSystemBrowser`: navigations that leave the initial origin are cancelled and opened in the system browser. Use `Block` to ignore them or `Allow` to navigate the WebView; add trusted origins to `AllowedOrigins`.
 - `NewWindowRequested` is handled by default: same-origin requests navigate the current view, external requests follow `ExternalNavigationPolicy`.
-- `EnableDevTools` requests the platform dev tools (defaults to true in Debug through build metadata). `EnableWindowsOffscreenComposition` sets WebView2's experimental offscreen composition, which is required when Avalonia content renders above the WebView (for example a loading overlay).
+- `EnableDevTools` requests the platform dev tools (defaults to true in Debug through build metadata). `ReactHostView` automatically enables WebView2 offscreen composition on Windows so its overlay renders above the WebView; direct `AvaloniaReactWebView` users can set `EnableWindowsOffscreenComposition` when they layer Avalonia content above the WebView.
 - `BridgeError` reports exceptions thrown by application `MessageReceived` handlers instead of letting them escape the WebView event loop.
 - `JavaScriptError` receives window errors and unhandled promise rejections forwarded by the bridge client, including message, stack, source, line, and column.
 - `ApiInvokeTimeout` (30 seconds by default) returns a timeout error to React when a host API implementation runs too long; set it to `TimeSpan.Zero` to disable.
@@ -145,13 +143,7 @@ This starts a loopback HTTP server on an ephemeral port and serves `wwwroot` wit
 
 Configure the root directory, fallback file, caching, keep-alive, or connection limits through `EmbeddedAssetOptions` (`EnableKeepAlive`, `IdleConnectionTimeout`, `MaxRequestsPerConnection`, `MaxConnections`). The server binds only to `127.0.0.1` and stops when the host window closes. Set `SourceMode="EmbeddedAssets"` in a Debug build to test the published path without switching to Release. On macOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
 
-On Windows, `EmbeddedAssetTransport.NativeHost` maps the asset folder to a WebView2 virtual host instead of opening a loopback port. It requires a Windows target framework such as `net10.0-windows`; the cross-platform `net10.0` build keeps using loopback:
-
-```csharp
-reactView.UseEmbeddedAssets(options => options.Transport = EmbeddedAssetTransport.NativeHost);
-```
-
-The host defaults to `https://avalonia-react.local/` and can be changed with `NativeHostName`. It serves static files only; SPA route fallback still requires the default loopback transport. WebView2 does not raise `WebResourceRequested` for virtual-host requests, so the native host cannot implement route fallback itself. Set `Transport = EmbeddedAssetTransport.Auto` to use the native host on Windows and the loopback server on other platforms. macOS and Linux native scheme handlers are not implemented: WKURLSchemeHandler must be registered before the WKWebView is created, but Avalonia only exposes the existing web view; Linux native scheme serving needs additional GIO interop. Both platforms continue to use loopback HTTP. Set `EmbeddedAssetsTransport="NativeHost"` (or `Auto`) on the control to test the native transport.
+Every platform uses the same loopback server for embedded assets. There is no platform-specific virtual-host or scheme-handler path, so SPA fallback, caching, conditional requests, keep-alive, and connection limits behave identically on Windows, macOS, and Linux. The loopback server is the only asset transport the package exposes.
 
 ### Embed assets in the assembly
 
@@ -283,7 +275,7 @@ dotnet run --project samples/ReactHost -f net10.0-windows
 dotnet run --project samples/ReactHost -f net10.0
 ```
 
-The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app calls `signalReady()` from `@avalonia-react/bridge` after React mounts. The sample window uses `ReactHostView` with `SourceMode="Auto"`, `EnableWindowsOffscreenComposition="True"`, and `WaitForBridgeReady="True"`, so the built-in themed overlay replaces the previous hand-written loading/error UI; the code-behind only registers the generated API and handles the demo messages. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting, and the "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
+The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app calls `signalReady()` from `@avalonia-react/bridge` after React mounts. The sample window uses `ReactHostView` with `SourceMode="Auto"` and `WaitForBridgeReady="True"`, so the built-in themed overlay replaces the previous hand-written loading/error UI; the code-behind only registers the generated API and handles the demo messages. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting, and the "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
 
 Build all three NuGet packages with `dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release`, `dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release`, and `dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release`.
 
@@ -312,7 +304,8 @@ The control and asset server are ordinary libraries, but host API registration a
 - Windows uses the installed Microsoft Edge WebView2 runtime.
 - macOS uses the system WKWebView.
 - Linux needs WebKitGTK or WPE WebKit runtime libraries.
-- The sample builds for `net10.0-windows` and `net10.0`; the cross-platform target uses loopback HTTP for embedded assets.
+- `Avalonia.React` targets `net10.0`; Windows hosts can reference it from a `net10.0-windows` project.
+- The sample builds for `net10.0-windows` and `net10.0`; both use the same loopback HTTP asset server.
 - The embedded asset pipeline in this repository targets desktop host applications; mobile and browser hosting are not covered by the sample or the MSBuild targets.
 
 See the [official Avalonia WebView documentation](https://docs.avaloniaui.net/docs/app-development/embedding-web-content) for platform setup details.

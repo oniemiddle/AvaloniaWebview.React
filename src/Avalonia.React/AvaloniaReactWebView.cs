@@ -23,9 +23,6 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private readonly ReactMessageQueue _messageQueue = new();
     private readonly List<Uri> _allowedOrigins = [];
     private IAssetTransport? _assetTransport;
-#if WINDOWS
-    private NativeAssetHost? _nativeAssetHost;
-#endif
     private EmbeddedAssetOptions? _embeddedAssetOptions;
     private bool _embeddedAssetsEnabled;
     private Window? _assetServerWindow;
@@ -97,9 +94,6 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <summary>Gets or sets the published frontend directory. Defaults to <c>wwwroot</c> next to the executable.</summary>
     public string? EmbeddedAssetsRoot { get; set; }
 
-    /// <summary>Gets or sets the transport used for embedded assets.</summary>
-    public EmbeddedAssetTransport EmbeddedAssetsTransport { get; set; } = EmbeddedAssetTransport.Loopback;
-
     /// <summary>
     /// Gets or sets what happens when a navigation leaves the application origin. Defaults to
     /// <see cref="ReactExternalNavigationPolicy.OpenInSystemBrowser"/>.
@@ -111,7 +105,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     /// <summary>
     /// Gets or sets whether WebView2 offscreen composition is requested on Windows. Enable this when Avalonia
-    /// content must render above the WebView, for example a loading overlay. Defaults to <see langword="false"/>.
+    /// content must render above the WebView, for example a loading overlay. <see cref="ReactHostView"/> enables
+    /// it automatically. Defaults to <see langword="false"/> for direct WebView use.
     /// </summary>
     public bool EnableWindowsOffscreenComposition { get; set; }
 
@@ -134,19 +129,13 @@ public sealed class AvaloniaReactWebView : NativeWebView
     public IList<Uri> AllowedOrigins => _allowedOrigins;
 
     /// <summary>
-    /// Starts serving a published frontend and navigates the WebView to it.
+    /// Starts serving a published frontend from the local asset directory and navigates the WebView to it.
+    /// All platforms use the same loopback HTTP server, which supports SPA fallback, caching, conditional
+    /// requests, and keep-alive connections. Use this for Release builds after the frontend has been copied
+    /// to <c>wwwroot</c>; point <see cref="NativeWebView.Source"/> at the Vite server during development instead.
     /// </summary>
-    /// <param name="configure">Configures the asset root, transport, SPA fallback, and caching.</param>
+    /// <param name="configure">Configures the asset root, SPA fallback, caching, and connection limits.</param>
     /// <returns>The URI that the WebView navigates to.</returns>
-    /// <remarks>
-    /// The default loopback transport binds to <c>127.0.0.1</c> on an ephemeral port, supports SPA fallback,
-    /// and stops when the host window closes. On Windows target frameworks,
-    /// <see cref="EmbeddedAssetTransport.NativeHost"/> maps the folder to a WebView2 virtual host instead
-    /// and starts no server; the virtual host serves static files only, so SPA route fallback requires the
-    /// loopback transport. The cross-platform target keeps using loopback.
-    /// Use this for Release builds after the frontend has been copied to <c>wwwroot</c>; point
-    /// <see cref="NativeWebView.Source"/> at the Vite server during development instead.
-    /// </remarks>
     public Uri UseEmbeddedAssets(Action<EmbeddedAssetOptions>? configure = null)
     {
         ThrowIfShutdown();
@@ -166,51 +155,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
                 AttachAssetServerWindow(window);
             }
 
-            var transport = options.Transport;
-#if WINDOWS
-            if (transport == EmbeddedAssetTransport.Auto)
-            {
-                transport = OperatingSystem.IsWindows() ? EmbeddedAssetTransport.NativeHost : EmbeddedAssetTransport.Loopback;
-            }
-
-            if (transport == EmbeddedAssetTransport.NativeHost)
-            {
-                var native = new NativeAssetHost(options);
-                _assetTransport = native;
-                _nativeAssetHost = native;
-
-                if (TryGetPlatformHandle() is null)
-                {
-                    // The adapter is created on attach; map the virtual host before navigating.
-                    AdapterCreated += HandleNativeAssetAdapterCreated;
-                    return EnableEmbeddedAssets(native.BaseUri);
-                }
-
-                if (ApplyNativeAssetHost(native))
-                {
-                    return EnableEmbeddedAssets(native.BaseUri);
-                }
-
-                return EnableEmbeddedAssets(StartLoopbackAssetServer());
-            }
-#else
-            if (transport == EmbeddedAssetTransport.NativeHost)
-            {
-                throw new PlatformNotSupportedException(
-                    "NativeHost asset embedding requires a Windows target framework such as net10.0-windows. Use Loopback or Auto on this target.");
-            }
-#endif
-
             return EnableEmbeddedAssets(StartLoopbackAssetServer());
         }
         catch
         {
             _embeddedAssetOptions = null;
             _assetTransport = null;
-#if WINDOWS
-            _nativeAssetHost = null;
-            AdapterCreated -= HandleNativeAssetAdapterCreated;
-#endif
             throw;
         }
     }
@@ -277,8 +227,6 @@ public sealed class AvaloniaReactWebView : NativeWebView
                         {
                             options.RootPath = EmbeddedAssetsRoot;
                         }
-
-                        options.Transport = EmbeddedAssetsTransport;
                     });
                     return true;
                 }
@@ -351,10 +299,6 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
         _isShutdown = true;
         DetachAssetServerWindow();
-#if WINDOWS
-        AdapterCreated -= HandleNativeAssetAdapterCreated;
-        _nativeAssetHost = null;
-#endif
         var transport = _assetTransport;
         _assetTransport = null;
         CancelPendingInvocations(dispose: true);
@@ -501,51 +445,13 @@ public sealed class AvaloniaReactWebView : NativeWebView
         return baseUri;
     }
 
-#if WINDOWS
-    private bool ApplyNativeAssetHost(NativeAssetHost native)
-    {
-        if (!native.TryApply(TryGetPlatformHandle()))
-        {
-            return false;
-        }
-
-        _nativeAssetHost = null;
-        Source = native.BaseUri;
-        return true;
-    }
-#endif
-
     private Uri StartLoopbackAssetServer()
     {
-#if WINDOWS
-        _nativeAssetHost = null;
-        AdapterCreated -= HandleNativeAssetAdapterCreated;
-
-        if (_assetTransport is NativeAssetHost native)
-        {
-            _ = native.DisposeAsync().AsTask();
-        }
-#endif
-
         var server = new EmbeddedAssetServer(_embeddedAssetOptions ?? new EmbeddedAssetOptions());
         _assetTransport = server;
         Source = server.BaseUri;
         return server.BaseUri;
     }
-
-#if WINDOWS
-    private void HandleNativeAssetAdapterCreated(object? sender, WebViewAdapterEventArgs args)
-    {
-        AdapterCreated -= HandleNativeAssetAdapterCreated;
-        var native = _nativeAssetHost;
-        if (native is not null && ApplyNativeAssetHost(native))
-        {
-            return;
-        }
-
-        StartLoopbackAssetServer();
-    }
-#endif
 
     private void AttachAssetServerWindow(Window window)
     {

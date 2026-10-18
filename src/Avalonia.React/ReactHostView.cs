@@ -26,7 +26,11 @@ public sealed class ReactHostView : Grid, IDisposable
     /// <summary>Creates the host view, its WebView child, and the built-in overlay.</summary>
     public ReactHostView()
     {
-        WebView = new AvaloniaReactWebView();
+        WebView = new AvaloniaReactWebView
+        {
+            // The built-in overlay must compose above WebView2 on Windows; other platforms ignore this.
+            EnableWindowsOffscreenComposition = true,
+        };
         Children.Add(WebView);
 
         _loadingIndicator = new ProgressBar
@@ -119,13 +123,6 @@ public sealed class ReactHostView : Grid, IDisposable
         set => WebView.EmbeddedAssetsRoot = value;
     }
 
-    /// <summary>Gets or sets the embedded asset transport.</summary>
-    public EmbeddedAssetTransport EmbeddedAssetsTransport
-    {
-        get => WebView.EmbeddedAssetsTransport;
-        set => WebView.EmbeddedAssetsTransport = value;
-    }
-
     /// <summary>Gets or sets the external navigation policy.</summary>
     public ReactExternalNavigationPolicy ExternalNavigationPolicy
     {
@@ -138,13 +135,6 @@ public sealed class ReactHostView : Grid, IDisposable
     {
         get => WebView.EnableDevTools;
         set => WebView.EnableDevTools = value;
-    }
-
-    /// <summary>Gets or sets whether Windows offscreen composition is requested.</summary>
-    public bool EnableWindowsOffscreenComposition
-    {
-        get => WebView.EnableWindowsOffscreenComposition;
-        set => WebView.EnableWindowsOffscreenComposition = value;
     }
 
     /// <summary>Gets or sets how long a host API implementation may run before a timeout error.</summary>

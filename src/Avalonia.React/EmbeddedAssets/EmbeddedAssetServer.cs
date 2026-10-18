@@ -6,21 +6,6 @@ using System.Text;
 namespace Avalonia.React.EmbeddedAssets;
 
 /// <summary>
-/// Selects how published frontend files are served.
-/// </summary>
-public enum EmbeddedAssetTransport
-{
-    /// <summary>Serves files from a loopback HTTP server. Works on all platforms and supports SPA fallback.</summary>
-    Loopback,
-
-    /// <summary>Maps the asset folder to a WebView2 virtual host. Requires a Windows target framework; no loopback port, no SPA fallback.</summary>
-    NativeHost,
-
-    /// <summary>Uses the native virtual host on Windows target frameworks and the loopback server otherwise.</summary>
-    Auto,
-}
-
-/// <summary>
 /// Configures the built-in server used to serve a published frontend from disk.
 /// </summary>
 public sealed class EmbeddedAssetOptions
@@ -33,12 +18,6 @@ public sealed class EmbeddedAssetOptions
 
     /// <summary>Gets or sets whether immutable cache headers are sent for files under <c>assets/</c>.</summary>
     public bool EnableCaching { get; set; } = true;
-
-    /// <summary>Gets or sets the asset transport. Defaults to <see cref="EmbeddedAssetTransport.Loopback"/>.</summary>
-    public EmbeddedAssetTransport Transport { get; set; } = EmbeddedAssetTransport.Loopback;
-
-    /// <summary>Gets or sets the virtual host name used by <see cref="EmbeddedAssetTransport.NativeHost"/>.</summary>
-    public string NativeHostName { get; set; } = "avalonia-react.local";
 
     /// <summary>Gets or sets whether HTTP/1.1 keep-alive connections are enabled. Defaults to <see langword="true"/>.</summary>
     public bool EnableKeepAlive { get; set; } = true;

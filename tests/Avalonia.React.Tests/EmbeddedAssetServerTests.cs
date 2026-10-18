@@ -287,15 +287,15 @@ public sealed class EmbeddedAssetServerTests : IAsyncLifetime
     private sealed record RawResponse(string StatusLine, string Body, string Connection);
 
     [Fact]
-    public void Defaults_to_the_loopback_transport()
+    public void Uses_sensible_asset_server_defaults()
     {
         var options = new EmbeddedAssetOptions();
 
-        Assert.Equal(EmbeddedAssetTransport.Loopback, options.Transport);
         Assert.Equal("index.html", options.SpaFallback);
-        Assert.Equal("avalonia-react.local", options.NativeHostName);
+        Assert.True(options.EnableCaching);
         Assert.True(options.EnableKeepAlive);
         Assert.Equal(TimeSpan.FromSeconds(30), options.IdleConnectionTimeout);
+        Assert.Equal(64, options.MaxConnections);
     }
 
     private async Task<string> SendRawAsync(string requestLine)

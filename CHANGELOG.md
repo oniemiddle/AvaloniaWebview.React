@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-10-18
+
+### Changed
+
+- **Breaking:** removed the Windows-only WebView2 virtual-host asset transport and unified every
+  platform on the loopback HTTP server. `EmbeddedAssetTransport`, `EmbeddedAssetOptions.Transport`,
+  `EmbeddedAssetOptions.NativeHostName`, `AvaloniaReactWebView.EmbeddedAssetsTransport`, and
+  `ReactHostView.EmbeddedAssetsTransport` no longer exist.
+- `Avalonia.React` now targets only `net10.0`; the `net10.0-windows` target, the Windows-specific
+  `NativeAssetHost`, and `AllowUnsafeBlocks` were removed. Windows applications continue to consume
+  the `net10.0` library.
+- `ReactHostView` enables Windows WebView2 offscreen composition automatically so its overlay
+  renders above the WebView; its `EnableWindowsOffscreenComposition` property was removed. Direct
+  `AvaloniaReactWebView` users can still configure the low-level property.
+- Package version is `0.10.0`.
+
+### Fixed
+
+- The sample no longer contains platform-specific composition configuration.
+
+### Documentation
+
+- Replaced the native-transport documentation with a single cross-platform asset-serving
+  description.
+
 ## [0.9.0] - 2026-10-18
 
 ### Added
