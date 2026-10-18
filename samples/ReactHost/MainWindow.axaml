@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:react="using:Avalonia.React"
+        xmlns:react="using:AvaloniaWebview.React"
         x:Class="ReactHost.MainWindow"
         Title="Avalonia + React"
         Width="1100"

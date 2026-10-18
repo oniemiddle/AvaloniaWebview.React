@@ -20,9 +20,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Test control package
-        run: dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release --nologo -v minimal
+        run: dotnet test tests/AvaloniaWebview.React.Tests/AvaloniaWebview.React.Tests.csproj -c Release --nologo -v minimal
       - name: Test source generator
-        run: dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release --nologo -v minimal
+        run: dotnet test tests/AvaloniaWebview.React.SourceGenerator.Tests/AvaloniaWebview.React.SourceGenerator.Tests.csproj -c Release --nologo -v minimal
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -61,9 +61,9 @@ jobs:
           npm --prefix client test
       - name: Pack
         run: |
-          dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release -o artifacts/packages --nologo
-          dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release -o artifacts/packages --nologo
-          dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/AvaloniaWebview.React/AvaloniaWebview.React.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/AvaloniaWebview.React.Vite/AvaloniaWebview.React.Vite.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/AvaloniaWebview.React.SourceGenerator/AvaloniaWebview.React.SourceGenerator.csproj -c Release -o artifacts/packages --nologo
           mkdir -p artifacts/packages
           cd client
           npm pack --pack-destination ../artifacts/packages

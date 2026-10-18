@@ -1,5 +1,5 @@
 using Avalonia.Controls;
-using Avalonia.React;
+using AvaloniaWebview.React;
 using ReactHost.Frontend;
 
 namespace ReactHost;

@@ -1,12 +1,12 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Avalonia.React/Avalonia.React.csproj" />
-    <Project Path="src/Avalonia.React.Vite/Avalonia.React.Vite.csproj" />
-    <Project Path="src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj" />
+    <Project Path="src/AvaloniaWebview.React/AvaloniaWebview.React.csproj" />
+    <Project Path="src/AvaloniaWebview.React.Vite/AvaloniaWebview.React.Vite.csproj" />
+    <Project Path="src/AvaloniaWebview.React.SourceGenerator/AvaloniaWebview.React.SourceGenerator.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj" />
-    <Project Path="tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj" />
+    <Project Path="tests/AvaloniaWebview.React.Tests/AvaloniaWebview.React.Tests.csproj" />
+    <Project Path="tests/AvaloniaWebview.React.SourceGenerator.Tests/AvaloniaWebview.React.SourceGenerator.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ReactHost/ReactHost.csproj" />

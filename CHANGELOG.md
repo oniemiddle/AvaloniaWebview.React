@@ -5,14 +5,35 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-10-18
+
+### Changed
+
+- Completed the project rename:
+  - Source and test folders are now `src/AvaloniaWebview.React`, `src/AvaloniaWebview.React.Vite`,
+    `src/AvaloniaWebview.React.SourceGenerator`, `tests/AvaloniaWebview.React.Tests`, and
+    `tests/AvaloniaWebview.React.SourceGenerator.Tests`.
+  - All project files, assembly names, root namespaces, `InternalsVisibleTo`, build-transitive
+    targets/props paths, and the default embedded asset prefix use `AvaloniaWebview.React`.
+  - The solution, CI/release workflows, package verification, documentation paths, sample imports,
+    and XAML namespace mappings were updated to the new names.
+- Consumers should update `using` directives, XAML `xmlns` mappings, project references, and assembly
+  references to the new namespace/assembly name. NuGet package IDs were already renamed in 0.16.1.
+- Package version is `0.17.0`; client version is `0.17.0`.
+
+### Verification
+
+- `dotnet build AvaloniaWebview.React.slnx -c Release` and all control/generator/client tests pass.
+- No remaining project folders, files, assemblies, or namespaces use the previous identifier.
+
 ## [0.16.2] - 2026-10-18
 
 ### Changed
 
 - Renamed the GitHub repository and project to `AvaloniaWebview.React`: the solution file is now
   `AvaloniaWebview.React.slnx`, and repository URLs, package metadata, and documentation use the new
-  name. C# namespaces and assemblies remain `Avalonia.React`; the NuGet package IDs were renamed in
-  0.16.1.
+  name. Until 0.17.0, C# namespaces and assemblies still used the previous name; the NuGet package
+  IDs were renamed in 0.16.1.
 - Updated the nuget.org Trusted Publishing policy for the renamed repository; this is the first
   publish under the new policy, which activates it permanently.
 - Package version is `0.16.2`; client version is `0.16.2`.
@@ -41,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- NuGet package quality: deterministic CI builds, `.snupkg` symbols for `Avalonia.React`, release
+- NuGet package quality: deterministic CI builds, `.snupkg` symbols for `AvaloniaWebview.React`, release
   notes metadata, and root-level LICENSE files in all three packages. Analyzer/targets-only packages
   no longer attempt to produce empty symbol packages.
 - NuGet publishing now uses Trusted Publishing (`NuGet/login@v1` with GitHub OIDC and the
@@ -93,7 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directly.
 - `ReactJsonSerializerDefaults` and `BridgeJsonSerializerOptions` let trimmed/AOT applications
   install a source-generated `JsonSerializerContext` for DTO/enum/collection payloads.
-- `Avalonia.React` is marked `IsTrimmable` and `IsAotCompatible`; trim/AOT analyzers build clean,
+- `AvaloniaWebview.React` is marked `IsTrimmable` and `IsAotCompatible`; trim/AOT analyzers build clean,
   and a trimmed sample publish was verified to invoke the generated primitive API successfully.
 - Source-generator CSProj treats `PublishTrimmed`/`SelfContained` as local so analyzer projects do
   not inherit application trimming settings.
@@ -183,7 +204,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   platform on the loopback HTTP server. `EmbeddedAssetTransport`, `EmbeddedAssetOptions.Transport`,
   `EmbeddedAssetOptions.NativeHostName`, `AvaloniaReactWebView.EmbeddedAssetsTransport`, and
   `ReactHostView.EmbeddedAssetsTransport` no longer exist.
-- `Avalonia.React` now targets only `net10.0`; the `net10.0-windows` target, the Windows-specific
+- `AvaloniaWebview.React` now targets only `net10.0`; the `net10.0-windows` target, the Windows-specific
   `NativeAssetHost`, and `AllowUnsafeBlocks` were removed. Windows applications continue to consume
   the `net10.0` library.
 - `ReactHostView` enables Windows WebView2 offscreen composition automatically so its overlay
@@ -219,7 +240,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Assembly-embedded frontend assets for single-file and installer deployments. Set
   `AvaloniaReactEmbedAssetsInAssembly=true` and the MSBuild target embeds the built `dist` folder as
-  manifest resources with the `Avalonia.React.Assets/` prefix before compilation.
+  manifest resources with the `AvaloniaWebview.React.Assets/` prefix before compilation.
 - `UseAssemblyEmbeddedAssets` plus `AssemblyEmbeddedAssetOptions` (`Assembly`, `ResourcePrefix`,
   `ExtractionRoot`, `ForceExtraction`). Files are extracted once per assembly build to a versioned
   directory and served by the loopback server; `ReactHostView` forwards the method.
@@ -359,7 +380,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   methods whose TypeScript name does not match the C# name.
 - The bridge client adds `createHostApiProxy<T>()`, which turns the TypeScript contract into a typed
   proxy and removes hand-written API/method strings from React code.
-- New `Avalonia.React.SourceGenerator.Tests` project (12 tests) covering parsing, diagnostics,
+- New `AvaloniaWebview.React.SourceGenerator.Tests` project (12 tests) covering parsing, diagnostics,
   generated source shape, and compilation of the generated code.
 - The sample contract is now a single file at `samples/react-app/src/FrontendApi.d.ts`, shared by the
   source generator and the React app's typed proxy.

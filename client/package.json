@@ -1,9 +1,9 @@
 {
   "name": "@avalonia-react/bridge",
-  "version": "0.16.2",
+  "version": "0.17.0",
   "description": "TypeScript bridge for hosting React inside AvaloniaWebview.React",
   "license": "MIT",
-  "author": "Avalonia.React contributors",
+  "author": "AvaloniaWebview.React contributors",
   "homepage": "https://github.com/oniemiddle/AvaloniaWebview.React#readme",
   "bugs": {
     "url": "https://github.com/oniemiddle/AvaloniaWebview.React/issues"

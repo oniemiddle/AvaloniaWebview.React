@@ -1,0 +1,86 @@
+<Project>
+  <PropertyGroup>
+    <AvaloniaReactProjectDirectory Condition="'$(AvaloniaReactProjectDirectory)' == ''">$(MSBuildProjectDirectory)\ClientApp</AvaloniaReactProjectDirectory>
+    <AvaloniaReactBridgeDirectory Condition="'$(AvaloniaReactBridgeDirectory)' == ''"></AvaloniaReactBridgeDirectory>
+    <AvaloniaReactBuildCommand Condition="'$(AvaloniaReactBuildCommand)' == ''">npm run build</AvaloniaReactBuildCommand>
+    <AvaloniaReactInstallCommand Condition="'$(AvaloniaReactInstallCommand)' == ''">npm ci</AvaloniaReactInstallCommand>
+    <AvaloniaReactBuildOnBuild Condition="'$(AvaloniaReactBuildOnBuild)' == ''">true</AvaloniaReactBuildOnBuild>
+    <AvaloniaReactEmbeddedAssets Condition="'$(AvaloniaReactEmbeddedAssets)' == ''">false</AvaloniaReactEmbeddedAssets>
+
+    <!-- Defaults read by AvaloniaReactWebView.SourceMode="Auto" at runtime. -->
+    <AvaloniaReactEmbedAssetsInAssembly Condition="'$(AvaloniaReactEmbedAssetsInAssembly)' == ''">false</AvaloniaReactEmbedAssetsInAssembly>
+    <AvaloniaReactAssemblyAssetPrefix Condition="'$(AvaloniaReactAssemblyAssetPrefix)' == ''">AvaloniaWebview.React.Assets/</AvaloniaReactAssemblyAssetPrefix>
+    <AvaloniaReactDefaultSourceMode Condition="'$(AvaloniaReactDefaultSourceMode)' == '' and '$(Configuration)' == 'Debug'">DevServer</AvaloniaReactDefaultSourceMode>
+    <AvaloniaReactDefaultSourceMode Condition="'$(AvaloniaReactDefaultSourceMode)' == '' and '$(AvaloniaReactEmbedAssetsInAssembly)' == 'true'">AssemblyEmbeddedAssets</AvaloniaReactDefaultSourceMode>
+    <AvaloniaReactDefaultSourceMode Condition="'$(AvaloniaReactDefaultSourceMode)' == ''">EmbeddedAssets</AvaloniaReactDefaultSourceMode>
+    <AvaloniaReactDevServerUrl Condition="'$(AvaloniaReactDevServerUrl)' == ''">http://127.0.0.1:5173/</AvaloniaReactDevServerUrl>
+    <AvaloniaReactEnableDevTools Condition="'$(AvaloniaReactEnableDevTools)' == '' and '$(Configuration)' == 'Debug'">true</AvaloniaReactEnableDevTools>
+    <AvaloniaReactEnableDevTools Condition="'$(AvaloniaReactEnableDevTools)' == ''">false</AvaloniaReactEnableDevTools>
+    <AvaloniaReactEmitAssemblyMetadata Condition="'$(AvaloniaReactEmitAssemblyMetadata)' == ''">true</AvaloniaReactEmitAssemblyMetadata>
+    <AvaloniaReactGenerateCancellationToken Condition="'$(AvaloniaReactGenerateCancellationToken)' == ''">false</AvaloniaReactGenerateCancellationToken>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(AvaloniaReactEmitAssemblyMetadata)' == 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">
+    <AssemblyMetadata Include="AvaloniaReact.SourceMode" Value="$(AvaloniaReactDefaultSourceMode)" />
+    <AssemblyMetadata Include="AvaloniaReact.DevServerUrl" Value="$(AvaloniaReactDevServerUrl)" />
+    <AssemblyMetadata Include="AvaloniaReact.EnableDevTools" Value="$(AvaloniaReactEnableDevTools)" />
+  </ItemGroup>
+
+  <Target Name="AvaloniaReactBuildBridge"
+          Condition="'$(AvaloniaReactBuildOnBuild)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(AvaloniaReactBridgeDirectory)' != '' and Exists('$(AvaloniaReactBridgeDirectory)\package.json')">
+    <Exec Command="npm ci" WorkingDirectory="$(AvaloniaReactBridgeDirectory)" Condition="!Exists('$(AvaloniaReactBridgeDirectory)\node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(AvaloniaReactBridgeDirectory)" />
+  </Target>
+
+  <Target Name="AvaloniaReactBuildFrontend"
+          BeforeTargets="Build"
+          DependsOnTargets="AvaloniaReactBuildBridge"
+          Condition="'$(AvaloniaReactBuildOnBuild)' == 'true' and '$(DesignTimeBuild)' != 'true' and Exists('$(AvaloniaReactProjectDirectory)\package.json')">
+    <Message Importance="high" Text="Building React frontend in $(AvaloniaReactProjectDirectory)" />
+    <Exec Command="$(AvaloniaReactInstallCommand)" WorkingDirectory="$(AvaloniaReactProjectDirectory)" Condition="!Exists('$(AvaloniaReactProjectDirectory)\node_modules')" />
+    <Exec Command="$(AvaloniaReactBuildCommand)" WorkingDirectory="$(AvaloniaReactProjectDirectory)" />
+  </Target>
+
+  <Target Name="AvaloniaReactEmbedFrontendAssets"
+          BeforeTargets="PrepareForBuild"
+          DependsOnTargets="AvaloniaReactBuildFrontend"
+          Condition="'$(AvaloniaReactEmbedAssetsInAssembly)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(AvaloniaReactProjectDirectory)\dist\index.html')"
+           Text="AvaloniaReactEmbedAssetsInAssembly is enabled, but $(AvaloniaReactProjectDirectory)\dist\index.html is missing. Build the frontend or disable the property." />
+    <ItemGroup>
+      <_AvaloniaReactAsset Include="$(AvaloniaReactProjectDirectory)\dist\**\*" />
+      <EmbeddedResource Include="@(_AvaloniaReactAsset)">
+        <LogicalName>$(AvaloniaReactAssemblyAssetPrefix)%(_AvaloniaReactAsset.RecursiveDir)%(_AvaloniaReactAsset.Filename)%(_AvaloniaReactAsset.Extension)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+    <Message Importance="high" Text="Embedding React frontend assets from $(AvaloniaReactProjectDirectory)\dist" />
+  </Target>
+
+  <Target Name="AvaloniaReactCopyBuildOutput"
+          AfterTargets="Build"
+          Condition="'$(TargetDir)' != '' and Exists('$(AvaloniaReactProjectDirectory)\dist')">
+    <ItemGroup>
+      <_AvaloniaReactOutput Include="$(AvaloniaReactProjectDirectory)\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AvaloniaReactOutput)"
+          DestinationFiles="@(_AvaloniaReactOutput->'$(TargetDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="AvaloniaReactCopyPublishOutput"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != '' and Exists('$(AvaloniaReactProjectDirectory)\dist')">
+    <ItemGroup>
+      <_AvaloniaReactPublishOutput Include="$(AvaloniaReactProjectDirectory)\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AvaloniaReactPublishOutput)"
+          DestinationFiles="@(_AvaloniaReactPublishOutput->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="AvaloniaReactVerifyEmbeddedAssets"
+          AfterTargets="AvaloniaReactCopyBuildOutput"
+          Condition="'$(AvaloniaReactEmbeddedAssets)' == 'true' and '$(TargetDir)' != '' and !Exists('$(TargetDir)wwwroot\index.html')">
+    <Warning Text="AvaloniaReactEmbeddedAssets is enabled, but $(TargetDir)wwwroot\index.html is missing. Ensure the frontend is built and copied before calling UseEmbeddedAssets." />
+  </Target>
+</Project>

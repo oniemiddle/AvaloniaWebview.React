@@ -32,9 +32,9 @@ jobs:
           grep -q "<AvaloniaReactVersion>${version}</AvaloniaReactVersion>" Directory.Build.props
           node -e "const p = require('./client/package.json'); const l = require('./client/package-lock.json'); if (p.version !== '${version}') { console.error('client/package.json version ' + p.version + ' does not match ' + '${version}'); process.exit(1); } if (l.version !== '${version}' || l.packages[''].version !== '${version}') { console.error('client/package-lock.json version does not match ${version}'); process.exit(1); }"
       - name: Test control package
-        run: dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release --nologo -v minimal
+        run: dotnet test tests/AvaloniaWebview.React.Tests/AvaloniaWebview.React.Tests.csproj -c Release --nologo -v minimal
       - name: Test source generator
-        run: dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release --nologo -v minimal
+        run: dotnet test tests/AvaloniaWebview.React.SourceGenerator.Tests/AvaloniaWebview.React.SourceGenerator.Tests.csproj -c Release --nologo -v minimal
       - name: Build and test bridge client
         run: |
           npm --prefix client ci
@@ -43,9 +43,9 @@ jobs:
           npm --prefix client run verify:package
       - name: Pack NuGet packages
         run: |
-          dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release -o artifacts/packages --nologo
-          dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release -o artifacts/packages --nologo
-          dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/AvaloniaWebview.React/AvaloniaWebview.React.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/AvaloniaWebview.React.Vite/AvaloniaWebview.React.Vite.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/AvaloniaWebview.React.SourceGenerator/AvaloniaWebview.React.SourceGenerator.csproj -c Release -o artifacts/packages --nologo
           pwsh -NoProfile -ExecutionPolicy Bypass -File eng/verify-nuget-packages.ps1
       - name: Pack bridge client
         run: |

@@ -18,11 +18,11 @@
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Semi.Avalonia" Version="12.1.0.1" />
-    <ProjectReference Include="..\..\src\Avalonia.React\Avalonia.React.csproj" />
-    <ProjectReference Include="..\..\src\Avalonia.React.SourceGenerator\Avalonia.React.SourceGenerator.csproj"
+    <ProjectReference Include="..\..\src\AvaloniaWebview.React\AvaloniaWebview.React.csproj" />
+    <ProjectReference Include="..\..\src\AvaloniaWebview.React.SourceGenerator\AvaloniaWebview.React.SourceGenerator.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />
   </ItemGroup>
-  <Import Project="..\..\src\Avalonia.React\build\Avalonia.React.targets" />
-  <Import Project="..\..\src\Avalonia.React.Vite\build\Avalonia.React.Vite.targets" />
+  <Import Project="..\..\src\AvaloniaWebview.React\build\AvaloniaWebview.React.targets" />
+  <Import Project="..\..\src\AvaloniaWebview.React.Vite\build\AvaloniaWebview.React.Vite.targets" />
 </Project>

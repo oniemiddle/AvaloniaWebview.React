@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>AvaloniaWebview.React</AssemblyName>
+    <RootNamespace>AvaloniaWebview.React</RootNamespace>
+    <PackageId>AvaloniaWebview.React</PackageId>
+    <Version>$(AvaloniaReactVersion)</Version>
+    <Authors>AvaloniaWebview.React contributors</Authors>
+    <Description>Build React frontends hosted in Avalonia 12 using Avalonia's native WebView and a typed JavaScript bridge.</Description>
+    <PackageTags>Avalonia;React;WebView;Hybrid;TypeScript</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/oniemiddle/AvaloniaWebview.React</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/oniemiddle/AvaloniaWebview.React</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts\packages</PackageOutputPath>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Controls.WebView" Version="$(AvaloniaVersion)" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="build\AvaloniaWebview.React.targets" Pack="true" PackagePath="buildTransitive\AvaloniaWebview.React.targets" />
+    <InternalsVisibleTo Include="AvaloniaWebview.React.Tests" />
+  </ItemGroup>
+</Project>

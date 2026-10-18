@@ -97,7 +97,7 @@ Add the control to an Avalonia view. Point it to the Vite development server whi
 ```xml
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:react="using:Avalonia.React">
+        xmlns:react="using:AvaloniaWebview.React">
   <react:AvaloniaReactWebView Source="http://localhost:5173/" />
 </Window>
 ```
@@ -228,7 +228,7 @@ For single-file or installer deployments, embed the built frontend in the host a
 </PropertyGroup>
 ```
 
-The MSBuild target embeds `$(AvaloniaReactProjectDirectory)\dist\**` as manifest resources with the `Avalonia.React.Assets/` prefix before compilation (it runs the frontend build when it is enabled). In Release builds, `SourceMode="Auto"` resolves to `AssemblyEmbeddedAssets`: on startup the resources are extracted to a versioned directory under the system temporary directory and served by the loopback server, so no frontend files need to ship beside the executable. The extraction directory is reused across launches and changes when the assembly build changes.
+The MSBuild target embeds `$(AvaloniaReactProjectDirectory)\dist\**` as manifest resources with the `AvaloniaWebview.React.Assets/` prefix before compilation (it runs the frontend build when it is enabled). In Release builds, `SourceMode="Auto"` resolves to `AssemblyEmbeddedAssets`: on startup the resources are extracted to a versioned directory under the system temporary directory and served by the loopback server, so no frontend files need to ship beside the executable. The extraction directory is reused across launches and changes when the assembly build changes.
 
 Call `UseAssemblyEmbeddedAssets` directly when the source mode should not use build metadata:
 
@@ -323,9 +323,9 @@ webView.BridgeReady += (_, _) => HideStartupOverlay();
 
 ## Package layout
 
-- `src/Avalonia.React`: the NuGet control and C# bridge.
-- `src/Avalonia.React.Vite`: optional Debug-time Vite server startup target.
-- `src/Avalonia.React.SourceGenerator`: C# interface generation from `.d.ts` declarations.
+- `src/AvaloniaWebview.React`: the NuGet control and C# bridge.
+- `src/AvaloniaWebview.React.Vite`: optional Debug-time Vite server startup target.
+- `src/AvaloniaWebview.React.SourceGenerator`: C# interface generation from `.d.ts` declarations.
 - `client`: TypeScript helpers for sending and subscribing to bridge messages.
 - `samples/ReactHost` and `samples/react-app`: a runnable desktop and Vite example.
 
@@ -359,9 +359,9 @@ The sample uses a conventional Vite entry: `index.html` only declares the root e
 Build all three NuGet packages with:
 
 ```sh
-dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release
-dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release
-dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release
+dotnet pack src/AvaloniaWebview.React/AvaloniaWebview.React.csproj -c Release
+dotnet pack src/AvaloniaWebview.React.Vite/AvaloniaWebview.React.Vite.csproj -c Release
+dotnet pack src/AvaloniaWebview.React.SourceGenerator/AvaloniaWebview.React.SourceGenerator.csproj -c Release
 ```
 
 Build the npm tarball with `cd client && npm pack --pack-destination ../artifacts/packages`. See [RELEASING.md](RELEASING.md) for the complete release checklist.
@@ -370,8 +370,8 @@ Build the npm tarball with `cd client && npm pack --pack-destination ../artifact
 
 ```sh
 dotnet build AvaloniaWebview.React.slnx -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
-dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
-dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
+dotnet test tests/AvaloniaWebview.React.Tests/AvaloniaWebview.React.Tests.csproj -c Release
+dotnet test tests/AvaloniaWebview.React.SourceGenerator.Tests/AvaloniaWebview.React.SourceGenerator.Tests.csproj -c Release
 npm --prefix client run build
 npm --prefix client test
 npm --prefix client run verify:package

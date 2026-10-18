@@ -51,8 +51,8 @@ Run the same checks before tagging:
 
 ```sh
 dotnet build AvaloniaWebview.React.slnx -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
-dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
-dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
+dotnet test tests/AvaloniaWebview.React.Tests/AvaloniaWebview.React.Tests.csproj -c Release
+dotnet test tests/AvaloniaWebview.React.SourceGenerator.Tests/AvaloniaWebview.React.SourceGenerator.Tests.csproj -c Release
 
 npm --prefix client ci
 npm --prefix client run build
@@ -61,9 +61,9 @@ npm --prefix client run verify:package
 # Package the tarball (npm pack does not honor --prefix for its destination):
 cd client && npm pack --pack-destination ../artifacts/packages && cd ..
 
-dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release -o artifacts/packages
-dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release -o artifacts/packages
-dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release -o artifacts/packages
+dotnet pack src/AvaloniaWebview.React/AvaloniaWebview.React.csproj -c Release -o artifacts/packages
+dotnet pack src/AvaloniaWebview.React.Vite/AvaloniaWebview.React.Vite.csproj -c Release -o artifacts/packages
+dotnet pack src/AvaloniaWebview.React.SourceGenerator/AvaloniaWebview.React.SourceGenerator.csproj -c Release -o artifacts/packages
 pwsh -NoProfile -ExecutionPolicy Bypass -File eng/verify-nuget-packages.ps1
 ```
 
