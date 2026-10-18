@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Reflection;
 using System.Globalization;
 using Avalonia.Controls;
@@ -19,6 +18,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
 {
     private static readonly Lazy<bool> DevServerLifetime = new(RegisterDevServerLifetime);
     private readonly Dictionary<string, ApiRegistration> _apis = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyDictionary<string, ReactApiMethodHandler>> _apiHandlers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CancellationTokenSource> _pendingInvocations = new(StringComparer.Ordinal);
     private readonly ReactMessageQueue _messageQueue = new();
     private readonly List<Uri> _allowedOrigins = [];
@@ -150,7 +150,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// AOT can assign options backed by a source-generated <c>JsonSerializerContext</c>. Defaults to
     /// <see cref="JsonSerializerOptions.Web"/>.
     /// </summary>
-    public JsonSerializerOptions BridgeJsonSerializerOptions { get; set; } = new(JsonSerializerOptions.Web);
+    public JsonSerializerOptions BridgeJsonSerializerOptions { get; set; } =
+        ReactJsonSerializerDefaults.Options ?? new(JsonSerializerDefaults.Web);
 
     /// <summary>
     /// Gets or sets the maximum number of host-to-React messages held while the page is loading.
@@ -337,6 +338,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         CancelPendingInvocations(dispose: true);
         _messageQueue.FailAll(new ObjectDisposedException(nameof(AvaloniaReactWebView)));
         _apis.Clear();
+        _apiHandlers.Clear();
         _bridgeReady = false;
         if (transport is not null)
         {
@@ -374,9 +376,9 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
         var name = apiName
             ?? contract.GetCustomAttribute<ReactApiContractAttribute>()?.Name
-            ?? (contract.Name.StartsWith("I", StringComparison.Ordinal) ? contract.Name.Substring(1) : contract.Name);
+            ?? (contract.Name.StartsWith("I", StringComparison.Ordinal) ? contract.Name[1..] : contract.Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        if (_apis.ContainsKey(name))
+        if (_apis.ContainsKey(name) || _apiHandlers.ContainsKey(name))
         {
             throw new ArgumentException($"An API named '{name}' is already registered on this WebView.", nameof(apiName));
         }
@@ -396,6 +398,25 @@ public sealed class AvaloniaReactWebView : NativeWebView
         _apis[name] = new ApiRegistration(implementation, methods);
     }
 
+    /// <summary>
+    /// Registers typed handlers generated for a TypeScript API contract. This overload avoids
+    /// reflection-based method discovery and can be used by trimming/AOT-oriented applications.
+    /// </summary>
+    /// <param name="apiName">The JavaScript API name.</param>
+    /// <param name="methods">Handlers keyed by the JavaScript method name.</param>
+    public void RegisterApi(string apiName, IReadOnlyDictionary<string, ReactApiMethodHandler> methods)
+    {
+        ThrowIfShutdown();
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiName);
+        ArgumentNullException.ThrowIfNull(methods);
+        if (_apis.ContainsKey(apiName) || _apiHandlers.ContainsKey(apiName))
+        {
+            throw new ArgumentException($"An API named '{apiName}' is already registered on this WebView.", nameof(apiName));
+        }
+
+        _apiHandlers[apiName] = new Dictionary<string, ReactApiMethodHandler>(methods, StringComparer.Ordinal);
+    }
+
     /// <summary>Removes a previously registered API.</summary>
     /// <param name="apiName">The JavaScript API name passed to <see cref="RegisterApi{TApi}"/>.</param>
     /// <returns><see langword="true"/> when an API was removed.</returns>
@@ -403,7 +424,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     {
         ThrowIfShutdown();
         ArgumentException.ThrowIfNullOrWhiteSpace(apiName);
-        return _apis.Remove(apiName);
+        return _apis.Remove(apiName) | _apiHandlers.Remove(apiName);
     }
 
     /// <summary>
@@ -420,7 +441,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         ThrowIfShutdown();
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
-        var payloadJson = JsonSerializer.Serialize(payload, BridgeJsonSerializerOptions);
+        var payloadJson = SerializeBridgeValue(payload);
         return PostJsonAsync(type, payloadJson);
     }
 
@@ -822,6 +843,61 @@ public sealed class AvaloniaReactWebView : NativeWebView
         return GetSystemTheme();
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "Only complex values fall back to JSON reflection; primitive and JsonElement payloads are written directly.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "Only complex values fall back to JSON reflection; configure BridgeJsonSerializerOptions with a source-generated context for Native AOT.")]
+    private string SerializeBridgeValue(object? value)
+    {
+        switch (value)
+        {
+            case null:
+                return "null";
+            case string text:
+                return ReactBridgeProtocol.QuoteJson(text);
+            case bool boolean:
+                return boolean ? "true" : "false";
+            case double number when double.IsFinite(number):
+                return number.ToString("R", CultureInfo.InvariantCulture);
+            case float number when float.IsFinite(number):
+                return number.ToString("R", CultureInfo.InvariantCulture);
+            case int number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case long number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case short number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case byte number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case uint number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case ulong number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case ushort number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case sbyte number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case decimal number:
+                return number.ToString(CultureInfo.InvariantCulture);
+            case DateTimeOffset timestamp:
+                return ReactBridgeProtocol.QuoteJson(timestamp.ToString("O", CultureInfo.InvariantCulture));
+            case DateTime timestamp:
+                return ReactBridgeProtocol.QuoteJson(timestamp.ToString("O", CultureInfo.InvariantCulture));
+            case Guid guid:
+                return ReactBridgeProtocol.QuoteJson(guid.ToString("D"));
+            case JsonElement element:
+                return element.GetRawText();
+            case byte[] bytes:
+                return ReactBridgeProtocol.QuoteJson(Convert.ToBase64String(bytes));
+            default:
+                return JsonSerializer.Serialize(value, value.GetType(), BridgeJsonSerializerOptions);
+        }
+    }
+
     private static string GetSystemTheme() =>
         Application.Current?.PlatformSettings?.GetColorValues().ThemeVariant == PlatformThemeVariant.Dark
             ? "dark"
@@ -915,6 +991,18 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2075",
+        Justification = "Only the annotated reflection-based RegisterApi path reads Task.Result by reflection.")]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "Reflection-based API results require preserved JSON metadata; use generated registration or a source-generated context.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "Reflection-based API results require a source-generated JSON context for Native AOT; generated registration avoids this path.")]
     private async Task HandleApiInvocationAsync(JsonElement payload)
     {
         var requestId = payload.TryGetProperty("requestId", out var idElement) ? idElement.GetString() : null;
@@ -941,31 +1029,50 @@ public sealed class AvaloniaReactWebView : NativeWebView
         {
             var apiName = payload.GetProperty("api").GetString() ?? throw new InvalidOperationException("API name is missing.");
             var methodName = payload.GetProperty("method").GetString() ?? throw new InvalidOperationException("Method name is missing.");
-            if (!_apis.TryGetValue(apiName, out var registration) || !registration.Methods.TryGetValue(methodName, out var method))
-            {
-                throw new InvalidOperationException($"The API method '{apiName}.{methodName}' is not registered.");
-            }
-
             var jsonArguments = payload.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Array
                 ? argsElement.EnumerateArray().ToArray()
                 : Array.Empty<JsonElement>();
-            var arguments = ReactApiMethodBinder.Bind(
-                method.GetParameters(),
-                jsonArguments,
-                apiName,
-                methodName,
-                cancellation?.Token ?? CancellationToken.None,
-                BridgeJsonSerializerOptions);
-            var implementationMethod = FindImplementationMethod(registration.Implementation.GetType(), method);
-            var invocation = implementationMethod.Invoke(registration.Implementation, arguments);
-            if (invocation is Task task)
+
+            if (_apiHandlers.TryGetValue(apiName, out var handlers))
             {
+                if (!handlers.TryGetValue(methodName, out var handler))
+                {
+                    throw new InvalidOperationException($"The API method '{apiName}.{methodName}' is not registered.");
+                }
+
+                var context = new ReactApiInvocationContext(
+                    jsonArguments,
+                    cancellation?.Token ?? CancellationToken.None,
+                    BridgeJsonSerializerOptions);
+                var task = handler(context) ?? throw new InvalidOperationException($"The host API handler '{apiName}.{methodName}' returned null.");
                 await AwaitInvocationAsync(task, cancellation).ConfigureAwait(false);
-                result = task.GetType().IsGenericType ? task.GetType().GetProperty("Result")?.GetValue(task) : null;
+                result = task.GetAwaiter().GetResult();
             }
             else
             {
-                result = invocation;
+                if (!_apis.TryGetValue(apiName, out var registration) || !registration.Methods.TryGetValue(methodName, out var method))
+                {
+                    throw new InvalidOperationException($"The API method '{apiName}.{methodName}' is not registered.");
+                }
+
+                var arguments = ReactApiMethodBinder.Bind(
+                    method.GetParameters(),
+                    jsonArguments,
+                    apiName,
+                    methodName,
+                    cancellation?.Token ?? CancellationToken.None,
+                    BridgeJsonSerializerOptions);
+                var implementationMethod = FindImplementationMethod(registration.Implementation.GetType(), method);
+                var invocation = implementationMethod.Invoke(registration.Implementation, arguments);
+                if (invocation is Task task)
+                {
+                    await AwaitInvocationAsync(task, cancellation).ConfigureAwait(false);
+                    result = task.GetType().IsGenericType ? task.GetType().GetProperty("Result")?.GetValue(task) : null;
+                }
+                else
+                {
+                    result = invocation;
+                }
             }
         }
         catch (Exception exception)
@@ -991,7 +1098,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
         {
             try
             {
-                await PostMessageAsync(ReactBridgeMessages.InvokeResult, new { requestId, result, error });
+                var resultJson = SerializeBridgeValue(result);
+                var errorJson = error is null ? "null" : ReactBridgeProtocol.QuoteJson(error);
+                var resultPayload = "{\"requestId\":" + ReactBridgeProtocol.QuoteJson(requestId!) +
+                    ",\"result\":" + resultJson +
+                    ",\"error\":" + errorJson + "}";
+                await PostJsonAsync(ReactBridgeMessages.InvokeResult, resultPayload);
             }
             catch (Exception)
             {
@@ -1072,14 +1184,17 @@ public sealed class AvaloniaReactWebView : NativeWebView
         var completed = await Task.WhenAny(task, timeout).ConfigureAwait(false);
         if (ReferenceEquals(completed, task))
         {
-            timeoutCancellation.Cancel();
+            await timeoutCancellation.CancelAsync();
             await task.ConfigureAwait(false);
             return;
         }
 
         try
         {
-            cancellation?.Cancel();
+            if (cancellation is not null)
+            {
+                await cancellation.CancelAsync();
+            }
         }
         catch (Exception)
         {
@@ -1094,6 +1209,14 @@ public sealed class AvaloniaReactWebView : NativeWebView
         throw new TimeoutException($"The host API call did not complete within {ApiInvokeTimeout.TotalSeconds:0.##} seconds.");
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "Only the annotated reflection-based RegisterApi path resolves implementation methods.")]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072",
+        Justification = "Only the annotated reflection-based RegisterApi path uses interface maps.")]
     private static MethodInfo FindImplementationMethod(Type implementationType, MethodInfo interfaceMethod)
     {
         var interfaceType = interfaceMethod.DeclaringType;
@@ -1119,8 +1242,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     private static string GetJavaScriptMethodName(MethodInfo method)
     {
-        var name = method.Name.EndsWith("Async", StringComparison.Ordinal) ? method.Name.Substring(0, method.Name.Length - 5) : method.Name;
-        return char.ToLowerInvariant(name[0]) + name.Substring(1);
+        var name = method.Name.EndsWith("Async", StringComparison.Ordinal) ? method.Name[..^5] : method.Name;
+        return char.ToLowerInvariant(name[0]) + name[1..];
     }
 
     private static bool RegisterDevServerLifetime()

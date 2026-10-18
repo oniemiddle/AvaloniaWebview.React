@@ -66,7 +66,7 @@ This emits a `UserProfile` class with `[JsonPropertyName]` properties, a `Status
 
 Generated interfaces are `partial` and carry `[ReactApiContract]`/`[ReactApiMethod]`, so the bridge uses the exact TypeScript API and method names. Keep the contract in the React project and reference it from the .NET project with `<AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />` to use one file for both sides.
 
-Implement the generated interface and register it on the WebView with `webView.RegisterApi<IHostApi>(implementation)`. On the React side, `createHostApiProxy<T>("HostApi")` returns a compiler-checked proxy, so method names and arguments no longer have to be written as strings:
+Implement the generated interface and register it with the generated reflection-free helper `HostApiBridge.Register(webView, implementation)` (or the reflection-based `webView.RegisterApi<IHostApi>(implementation)`). On the React side, `createHostApiProxy<T>("HostApi")` returns a compiler-checked proxy, so method names and arguments no longer have to be written as strings:
 
 ```ts
 import { createHostApiProxy } from "@avalonia-react/bridge";
@@ -356,15 +356,26 @@ Set `AvaloniaReactVersion` in `Directory.Build.props`, commit, and push a matchi
 
 ## Trimming and Native AOT
 
-The control and asset server are ordinary libraries, but host API registration still reflects over interface implementations. Those members are annotated with `RequiresUnreferencedCode` and `RequiresDynamicCode`, so enabling the trim/AOT analyzers reports call sites that need attention.
-
-Bridge envelopes are built without reflection, and `BridgeJsonSerializerOptions` can be assigned options backed by a source-generated `JsonSerializerContext` so payload serialization works under trimming/AOT:
+The library is marked `IsTrimmable` and `IsAotCompatible`; its trim and AOT analyzers build cleanly. Prefer the generated registration helper, which invokes the implementation through delegates instead of `MethodInfo` reflection:
 
 ```csharp
-reactHost.BridgeJsonSerializerOptions = MyApp.Frontend.FrontendApiJsonContext.Default.Options;
+HostApiBridge.Register(webView, new HostApi());
 ```
 
-The generated source generator does not yet emit that context automatically, and host API dispatch still uses reflection; applications should preserve their contract implementations (or avoid `RegisterApi`) when trimming. If the application is trimmed or compiled with Native AOT, preserve the generated interface implementations and payload types (for example with `DynamicDependency` or a trim descriptor) or avoid the reflection-based API surface. The source generator produces interfaces only; it does not generate `JsonSerializerContext` metadata. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements.
+Generated handlers read `string`, `number`, `boolean`, `DateTimeOffset`, `byte[]`, and `JsonElement` arguments directly from `JsonElement`, and the bridge writes primitive/`JsonElement` results without reflection. DTOs, enums, collections, and custom message payloads still need JSON metadata. For trimmed/Native AOT applications, define a source-generated context covering those types and install it before creating the WebView:
+
+```csharp
+[JsonSerializable(typeof(UserProfile))]
+[JsonSerializable(typeof(IReadOnlyList<UserProfile>))]
+internal partial class AppJsonContext : JsonSerializerContext
+{
+}
+
+ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
+// Or per view: webView.BridgeJsonSerializerOptions = AppJsonContext.Default.Options;
+```
+
+The source generator cannot emit a `JsonSerializerContext` automatically because System.Text.Json's generator does not see other generators' output. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's generated registration and primitive API were verified with `PublishTrimmed=true`.
 
 ## Platform notes
 

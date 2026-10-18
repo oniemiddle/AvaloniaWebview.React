@@ -139,6 +139,7 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
             var declarationIndex = 0;
             foreach (var declaration in parsedFile.Declarations)
             {
+
                 if (declaration.Kind == DeclarationKind.Alias)
                 {
                     continue;
@@ -534,8 +535,204 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
         }
 
         builder.AppendLine("}");
+        builder.AppendLine();
+        var registrationMethods = CollectRegistrationMethods(declaration, localTypes, globalTypes);
+        AppendRegistration(declaration, registrationMethods, mapper, emitCancellationToken, builder);
         return builder.ToString();
     }
+
+    private static List<RawMethod> CollectRegistrationMethods(
+        Declaration declaration,
+        Dictionary<string, Declaration> localTypes,
+        Dictionary<string, Declaration> globalTypes)
+    {
+        var methods = new List<RawMethod>();
+        var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(Declaration current)
+        {
+            if (!visited.Add(current.TypeScriptName))
+            {
+                return;
+            }
+
+            foreach (var baseName in current.BaseNames)
+            {
+                if (!localTypes.TryGetValue(baseName, out var baseDeclaration) &&
+                    !globalTypes.TryGetValue(baseName, out baseDeclaration))
+                {
+                    continue;
+                }
+
+                if (baseDeclaration.Kind == DeclarationKind.Api)
+                {
+                    Add(baseDeclaration);
+                }
+            }
+
+            foreach (var method in current.Methods)
+            {
+                if (indexes.TryGetValue(method.Name, out var index))
+                {
+                    methods[index] = method;
+                }
+                else
+                {
+                    indexes.Add(method.Name, methods.Count);
+                    methods.Add(method);
+                }
+            }
+        }
+
+        Add(declaration);
+        return methods;
+    }
+
+    private static void AppendRegistration(
+        Declaration declaration,
+        IReadOnlyList<RawMethod> methods,
+        TypeMapper mapper,
+        bool emitCancellationToken,
+        StringBuilder builder)
+    {
+        builder.AppendLine("#pragma warning disable IL2026, IL3050 // Typed handlers require source-generated BridgeJsonSerializerOptions for full AOT.");
+        builder.Append("public static partial class ").Append(ToPascal(declaration.TypeScriptName)).AppendLine("Bridge");
+        builder.AppendLine("{");
+        builder.AppendLine("    [global::System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(\"Trimming\", \"IL2026\", Justification = \"Generated handlers require BridgeJsonSerializerOptions backed by a source-generated JSON context for full trimming.\")]");
+        builder.AppendLine("    [global::System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(\"AOT\", \"IL3050\", Justification = \"Generated handlers require BridgeJsonSerializerOptions backed by a source-generated JSON context for Native AOT.\")]");
+        builder.AppendLine("    public static void Register(");
+        builder.AppendLine("        global::Avalonia.React.AvaloniaReactWebView webView,");
+        builder.Append("        global::").Append(declaration.NamespaceName).Append('.').Append(declaration.CSharpName).AppendLine(" implementation,");
+        builder.AppendLine("        string? apiName = null)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(webView);");
+        builder.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(implementation);");
+        builder.Append("        webView.RegisterApi(apiName ?? \"").Append(EscapeString(declaration.TypeScriptName)).AppendLine("\",");
+        builder.AppendLine("            new global::System.Collections.Generic.Dictionary<string, global::Avalonia.React.ReactApiMethodHandler>(global::System.StringComparer.Ordinal)");
+        builder.AppendLine("            {");
+        foreach (var method in methods)
+        {
+            var methodName = ToPascal(method.Name);
+            var returnType = MapReturnType(method.ReturnType, mapper, out var isAsync);
+            if (isAsync && !methodName.EndsWith("Async", StringComparison.Ordinal))
+            {
+                methodName += "Async";
+            }
+
+            builder.Append("                [\"").Append(EscapeString(method.Name)).AppendLine("\"] = async context =>");
+            builder.AppendLine("                {");
+            var expressions = new List<string>();
+            var argumentIndex = 0;
+            foreach (var argument in SplitTopLevel(method.Arguments, ','))
+            {
+                var argumentText = argument.Trim();
+                if (argumentText.Length == 0 || argumentText.StartsWith("this:", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var match = ParameterPattern.Match(argumentText);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                var argumentType = mapper.Map(match.Groups["type"].Value);
+                var optional = match.Groups["optional"].Success;
+                if (optional || match.Groups["rest"].Success)
+                {
+                    argumentType = MakeNullable(argumentType);
+                }
+
+                var argumentName = Identifier(match.Groups["name"].Value);
+                var element = "context.Arguments[" + argumentIndex + "]";
+                var nullableArgument = argumentType.EndsWith("?", StringComparison.Ordinal);
+                var underlyingType = nullableArgument ? argumentType.Substring(0, argumentType.Length - 1) : argumentType;
+                var directRead = DirectJsonRead(underlyingType, element, nullableArgument);
+                if (directRead is not null)
+                {
+                    builder.Append("                    var ").Append(argumentName).Append(" = ");
+                    if (optional)
+                    {
+                        builder.Append("context.Arguments.Count > ").Append(argumentIndex).Append(" ? ")
+                            .Append(directRead).Append(" : default");
+                    }
+                    else
+                    {
+                        builder.Append(directRead);
+                    }
+
+                    builder.AppendLine(";");
+                }
+                else if (optional)
+                {
+                    builder.Append("                    var ").Append(argumentName)
+                        .Append(" = context.Arguments.Count > ").Append(argumentIndex)
+                        .Append(" ? global::System.Text.Json.JsonSerializer.Deserialize<").Append(argumentType)
+                        .Append(">(context.Arguments[").Append(argumentIndex)
+                        .AppendLine("], context.JsonSerializerOptions)! : default;");
+                }
+                else
+                {
+                    builder.Append("                    var ").Append(argumentName)
+                        .Append(" = global::System.Text.Json.JsonSerializer.Deserialize<").Append(argumentType)
+                        .Append(">(context.Arguments[").Append(argumentIndex)
+                        .AppendLine("], context.JsonSerializerOptions)!;");
+                }
+
+                expressions.Add(argumentName);
+                argumentIndex++;
+            }
+
+            if (emitCancellationToken)
+            {
+                expressions.Add("context.CancellationToken");
+            }
+
+            var call = "implementation." + methodName + "(" + string.Join(", ", expressions) + ")";
+            if (returnType == "Task")
+            {
+                builder.Append("                    await ").Append(call).AppendLine(".ConfigureAwait(false);");
+                builder.AppendLine("                    return null;");
+            }
+            else
+            {
+                builder.Append("                    return await ").Append(call).AppendLine(".ConfigureAwait(false);");
+            }
+
+            builder.AppendLine("                },");
+        }
+
+        builder.AppendLine("            });");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        builder.AppendLine("#pragma warning restore IL2026, IL3050");
+    }
+
+    private static string? DirectJsonRead(string type, string element, bool nullable) =>
+        type switch
+        {
+            "string" when nullable =>
+                element + ".ValueKind == global::System.Text.Json.JsonValueKind.Null ? null : " + element + ".GetString()",
+            "string" => element + ".GetString()!",
+            "double" when nullable =>
+                element + ".ValueKind == global::System.Text.Json.JsonValueKind.Null ? null : " + element + ".GetDouble()",
+            "double" => element + ".GetDouble()",
+            "bool" when nullable =>
+                element + ".ValueKind == global::System.Text.Json.JsonValueKind.Null ? null : " + element + ".GetBoolean()",
+            "bool" => element + ".GetBoolean()",
+            "global::System.DateTimeOffset" when nullable =>
+                element + ".ValueKind == global::System.Text.Json.JsonValueKind.Null ? null : " + element + ".GetDateTimeOffset()",
+            "global::System.DateTimeOffset" => element + ".GetDateTimeOffset()",
+            "byte[]" when nullable =>
+                element + ".ValueKind == global::System.Text.Json.JsonValueKind.Null ? null : global::System.Convert.FromBase64String(" + element + ".GetString()!)",
+            "byte[]" => "global::System.Convert.FromBase64String(" + element + ".GetString()!)",
+            "global::System.Text.Json.JsonElement" when nullable =>
+                element + ".ValueKind == global::System.Text.Json.JsonValueKind.Null ? default(global::System.Text.Json.JsonElement?) : " + element + ".Clone()",
+            "global::System.Text.Json.JsonElement" => element + ".Clone()",
+            _ => null,
+        };
 
     private static string? EmitDto(
         Declaration declaration,

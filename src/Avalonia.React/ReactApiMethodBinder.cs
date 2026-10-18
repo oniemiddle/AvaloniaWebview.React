@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
 
@@ -8,6 +9,16 @@ namespace Avalonia.React;
 /// </summary>
 internal static class ReactApiMethodBinder
 {
+    private static readonly JsonSerializerOptions DefaultOptions = new(JsonSerializerDefaults.Web);
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "Reflection-based registration is annotated with RequiresUnreferencedCode; use generated bridge registration or a source-generated JSON context.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "Reflection-based registration requires a source-generated JSON context for Native AOT; generated bridge registration avoids this path.")]
     public static object?[] Bind(
         ParameterInfo[] parameters,
         IReadOnlyList<JsonElement> arguments,
@@ -41,7 +52,7 @@ internal static class ReactApiMethodBinder
             {
                 bound[index] = arguments[index].Deserialize(
                     parameters[index].ParameterType,
-                    serializerOptions ?? JsonSerializerOptions.Web);
+                    serializerOptions ?? DefaultOptions);
                 continue;
             }
 

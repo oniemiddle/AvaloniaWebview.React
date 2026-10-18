@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-10-18
+
+### Added
+
+- Reflection-free host API registration: every generated API contract now emits a
+  `{TypeScriptName}Bridge` helper with typed delegates, including inherited interface methods and
+  cancellation-token forwarding. The sample uses it for its `HostApi`.
+- Primitive and `JsonElement` host API arguments/results and host messages are read/written without
+  reflection; string, number, boolean, `DateTimeOffset`, `Guid`, and `byte[]` values are handled
+  directly.
+- `ReactJsonSerializerDefaults` and `BridgeJsonSerializerOptions` let trimmed/AOT applications
+  install a source-generated `JsonSerializerContext` for DTO/enum/collection payloads.
+- `Avalonia.React` is marked `IsTrimmable` and `IsAotCompatible`; trim/AOT analyzers build clean,
+  and a trimmed sample publish was verified to invoke the generated primitive API successfully.
+- Source-generator CSProj treats `PublishTrimmed`/`SelfContained` as local so analyzer projects do
+  not inherit application trimming settings.
+- Generator tests now cover generated registration helpers, inheritance, cancellation, and direct
+  primitive argument reads (27 tests).
+
+### Changed
+
+- Package version is `0.14.0`.
+
+### Documentation
+
+- Documented generated registration, the trimming/AOT JSON context requirement, and the manually
+  configurable serializer defaults.
+
 ## [0.13.0] - 2026-10-18
 
 ### Added

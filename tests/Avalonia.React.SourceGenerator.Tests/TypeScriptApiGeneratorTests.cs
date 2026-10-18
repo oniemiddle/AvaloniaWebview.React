@@ -25,6 +25,25 @@ public sealed class TypeScriptApiGeneratorTests
                 public ReactApiMethodAttribute(string name) { Name = name; }
                 public string Name { get; }
             }
+
+            public delegate System.Threading.Tasks.Task<object?> ReactApiMethodHandler(ReactApiInvocationContext context);
+
+            public sealed class ReactApiInvocationContext
+            {
+                public System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement> Arguments =>
+                    throw new System.NotImplementedException();
+                public System.Threading.CancellationToken CancellationToken => default;
+                public System.Text.Json.JsonSerializerOptions JsonSerializerOptions => new();
+            }
+
+            public sealed class AvaloniaReactWebView
+            {
+                public void RegisterApi(
+                    string apiName,
+                    System.Collections.Generic.IReadOnlyDictionary<string, ReactApiMethodHandler> methods)
+                {
+                }
+            }
         }
         """;
 
@@ -205,6 +224,69 @@ public sealed class TypeScriptApiGeneratorTests
         Assert.Equal(2, run.Results.SelectMany(result => result.GeneratedSources).Count());
         Assert.Contains("FirstAsync", run.Sources().First());
         Assert.Contains("SecondAsync", run.Sources().Last());
+    }
+
+    [Fact]
+    public void Generates_a_reflection_free_registration_helper()
+    {
+        var run = Generate("""
+            // @namespace MyApp.Frontend
+            export interface HostApi {
+              getGreeting(name: string): Promise<string>;
+              saveCount(value: number): Promise<void>;
+              findUsers(limit: number, filter?: string): Promise<string[]>;
+            }
+            """);
+
+        var source = run.SingleSource();
+        Assert.Contains("public static partial class HostApiBridge", source);
+        Assert.Contains("public static void Register(", source);
+        Assert.Contains("global::Avalonia.React.AvaloniaReactWebView webView", source);
+        Assert.Contains("global::MyApp.Frontend.IHostApi implementation", source);
+        Assert.Contains("[\"getGreeting\"] = async context =>", source);
+        Assert.Contains("var name = context.Arguments[0].GetString()!;", source);
+        Assert.Contains("return await implementation.GetGreetingAsync(name).ConfigureAwait(false);", source);
+        Assert.Contains("var filter = context.Arguments.Count > 1 ?", source);
+        Assert.Contains("await implementation.SaveCountAsync(value).ConfigureAwait(false);", source);
+        Assert.Contains("webView.RegisterApi(apiName ?? \"HostApi\",", source);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Registration_helper_includes_inherited_interface_methods()
+    {
+        var run = Generate("""
+            export interface BaseApi {
+              baseMethod(): Promise<void>;
+            }
+
+            export interface HostApi extends BaseApi {
+              childMethod(): Promise<void>;
+            }
+            """);
+
+        var source = run.Sources().Single(item => item.Contains("public partial interface IHostApi"));
+        Assert.Contains("[\"baseMethod\"] = async context =>", source);
+        Assert.Contains("[\"childMethod\"] = async context =>", source);
+        Assert.Contains("implementation.BaseMethodAsync()", source);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Registration_helper_passes_the_cancellation_token()
+    {
+        var run = Generate(
+            """
+            export interface HostApi {
+              getGreeting(name: string): Promise<string>;
+            }
+            """,
+            emitCancellationToken: true);
+
+        Assert.Contains(
+            "return await implementation.GetGreetingAsync(name, context.CancellationToken).ConfigureAwait(false);",
+            run.SingleSource());
+        Assert.Empty(run.CompilationErrors());
     }
 
     [Fact]

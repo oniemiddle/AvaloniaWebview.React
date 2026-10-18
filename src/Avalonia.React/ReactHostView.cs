@@ -294,6 +294,10 @@ public sealed class ReactHostView : Grid, IDisposable
     public void RegisterApi<TApi>(TApi implementation, string? apiName = null) where TApi : class =>
         WebView.RegisterApi(implementation, apiName);
 
+    /// <summary>Registers reflection-free handlers generated for a TypeScript API contract.</summary>
+    public void RegisterApi(string apiName, IReadOnlyDictionary<string, ReactApiMethodHandler> methods) =>
+        WebView.RegisterApi(apiName, methods);
+
     /// <summary>Removes a previously registered API.</summary>
     public bool UnregisterApi(string apiName) => WebView.UnregisterApi(apiName);
 

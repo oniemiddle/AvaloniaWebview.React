@@ -66,6 +66,27 @@ String enums use `JsonStringEnumConverter<T>` and `JsonStringEnumMemberName`; nu
 
 Generated interfaces are `partial` and annotated with `[ReactApiContract]` and `[ReactApiMethod]`, so the bridge uses the TypeScript names rather than deriving them from C# identifiers. Multiple interfaces with the same name in different `.d.ts` files no longer collide.
 
+### Reflection-free registration
+
+Each API contract also generates a `{TypeScriptName}Bridge` static class. Register the implementation through it to avoid reflection-based method discovery:
+
+```csharp
+HostApiBridge.Register(webView, new HostApi());
+```
+
+The helper includes methods inherited from base API interfaces and passes the cancellation token when it is enabled. Primitive arguments are read directly from the bridge's `JsonElement` arguments; DTO, enum, and collection arguments use `context.JsonSerializerOptions`. For trimmed/Native AOT applications, assign a source-generated `JsonSerializerContext`:
+
+```csharp
+[JsonSerializable(typeof(UserProfile))]
+internal partial class AppJsonContext : JsonSerializerContext
+{
+}
+
+ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
+```
+
+The reflection-based `RegisterApi<TApi>` overload remains available and is annotated for trimming/AOT analyzers.
+
 ### Cancellation tokens
 
 Set `<AvaloniaReactGenerateCancellationToken>true</AvaloniaReactGenerateCancellationToken>` in the host project to append a trailing cancellation parameter to every generated method:
