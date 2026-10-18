@@ -157,6 +157,16 @@ public sealed class EmbeddedAssetServerTests : IAsyncLifetime
         Assert.Contains(missingRoot, exception.Message);
     }
 
+    [Fact]
+    public void Defaults_to_the_loopback_transport()
+    {
+        var options = new EmbeddedAssetOptions();
+
+        Assert.Equal(EmbeddedAssetTransport.Loopback, options.Transport);
+        Assert.Equal("index.html", options.SpaFallback);
+        Assert.Equal("avalonia-react.local", options.NativeHostName);
+    }
+
     private async Task<string> SendRawAsync(string requestLine)
     {
         var port = _server.BaseUri.Port;

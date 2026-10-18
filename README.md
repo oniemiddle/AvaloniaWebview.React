@@ -73,6 +73,14 @@ This starts a loopback HTTP server on an ephemeral port and serves `wwwroot` wit
 
 Configure the root directory, fallback file, or caching through `EmbeddedAssetOptions`. The server binds only to `127.0.0.1` and stops when the host window closes. Set `AVALONIA_REACT_EMBEDDED=1` in a Debug build to test the published path without switching to Release. On macOS and iOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
 
+On Windows, `EmbeddedAssetTransport.NativeHost` maps the asset folder to a WebView2 virtual host instead of opening a loopback port:
+
+```csharp
+reactView.UseEmbeddedAssets(options => options.Transport = EmbeddedAssetTransport.NativeHost);
+```
+
+The host defaults to `https://avalonia-react.local/` and can be changed with `NativeHostName`. It serves static files only; SPA route fallback still requires the default loopback transport. WebView2 does not raise `WebResourceRequested` for virtual-host requests, so the native host cannot implement route fallback itself. Set `Transport = EmbeddedAssetTransport.Auto` to use the native host on Windows and the loopback server on other platforms. macOS and Linux native scheme handlers are not implemented: WKURLSchemeHandler must be registered before the WKWebView is created, but Avalonia only exposes the existing web view; Linux native scheme serving needs additional GIO interop. Both platforms continue to use loopback HTTP. The sample enables the native transport when `AVALONIA_REACT_NATIVE=1` is set.
+
 ## React to Avalonia messages
 
 The repository includes an optional TypeScript helper in [`client`](client/README.md). The NuGet package itself needs no npm dependency: React can call Avalonia's built-in JavaScript bridge directly.

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Platform;
+using Avalonia.React;
 using ReactHost.Frontend;
 
 namespace ReactHost;
@@ -55,14 +56,14 @@ public sealed partial class MainWindow : Window
 #if DEBUG
             if (Environment.GetEnvironmentVariable("AVALONIA_REACT_EMBEDDED") == "1")
             {
-                ReactView.UseEmbeddedAssets();
+                ReactView.UseEmbeddedAssets(ConfigureEmbeddedAssets);
             }
             else
             {
                 ReactView.Source = new Uri("http://127.0.0.1:5173/");
             }
 #else
-            ReactView.UseEmbeddedAssets();
+            ReactView.UseEmbeddedAssets(ConfigureEmbeddedAssets);
 #endif
         }
 
@@ -73,6 +74,19 @@ public sealed partial class MainWindow : Window
                 LoadingOverlay.IsVisible = false;
             }
         };
+    }
+
+    private static void ConfigureEmbeddedAssets(EmbeddedAssetOptions options)
+    {
+        var transport = Environment.GetEnvironmentVariable("AVALONIA_REACT_NATIVE");
+        if (transport == "1")
+        {
+            options.Transport = EmbeddedAssetTransport.NativeHost;
+        }
+        else if (string.Equals(transport, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            options.Transport = EmbeddedAssetTransport.Auto;
+        }
     }
 
     private void RetryButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

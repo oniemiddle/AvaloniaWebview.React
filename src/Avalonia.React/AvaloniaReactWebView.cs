@@ -19,6 +19,9 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private static readonly Lazy<bool> DevServerLifetime = new(RegisterDevServerLifetime);
     private readonly Dictionary<string, ApiRegistration> _apis = new(StringComparer.Ordinal);
     private IAssetTransport? _assetTransport;
+    private NativeAssetHost? _nativeAssetHost;
+    private EmbeddedAssetOptions? _embeddedAssetOptions;
+    private bool _embeddedAssetsEnabled;
     private Window? _assetServerWindow;
 
     /// <summary>
@@ -38,42 +41,103 @@ public sealed class AvaloniaReactWebView : NativeWebView
     public event EventHandler<ReactMessageReceivedEventArgs>? MessageReceived;
 
     /// <summary>
-    /// Starts a loopback HTTP server for a published frontend and navigates the WebView to it.
+    /// Starts serving a published frontend and navigates the WebView to it.
     /// </summary>
-    /// <param name="configure">Configures the asset root, SPA fallback, and caching.</param>
-    /// <returns>The base URI served by the embedded asset server.</returns>
+    /// <param name="configure">Configures the asset root, transport, SPA fallback, and caching.</param>
+    /// <returns>The URI that the WebView navigates to.</returns>
     /// <remarks>
-    /// The server binds to <c>127.0.0.1</c> on an ephemeral port and stops when the host window closes.
+    /// The default loopback transport binds to <c>127.0.0.1</c> on an ephemeral port, supports SPA fallback,
+    /// and stops when the host window closes. On Windows, <see cref="EmbeddedAssetTransport.NativeHost"/>
+    /// maps the folder to a WebView2 virtual host instead and starts no server; the virtual host serves
+    /// static files only, so SPA route fallback requires the loopback transport.
     /// Use this for Release builds after the frontend has been copied to <c>wwwroot</c>; point
     /// <see cref="NativeWebView.Source"/> at the Vite server during development instead.
     /// </remarks>
     public Uri UseEmbeddedAssets(Action<EmbeddedAssetOptions>? configure = null)
     {
-        if (_assetTransport is not null)
+        if (_embeddedAssetsEnabled)
         {
             throw new InvalidOperationException("Embedded assets are already enabled.");
         }
 
         var options = new EmbeddedAssetOptions();
         configure?.Invoke(options);
-
-        var server = new EmbeddedAssetServer(options);
-        _assetTransport = server;
-        Source = server.BaseUri;
+        _embeddedAssetOptions = options;
+        _embeddedAssetsEnabled = true;
 
         if (TopLevel.GetTopLevel(this) is Window window)
         {
             AttachAssetServerWindow(window);
         }
 
+        var transport = options.Transport == EmbeddedAssetTransport.Auto
+            ? OperatingSystem.IsWindows() ? EmbeddedAssetTransport.NativeHost : EmbeddedAssetTransport.Loopback
+            : options.Transport;
+
+        if (transport == EmbeddedAssetTransport.NativeHost)
+        {
+            var native = new NativeAssetHost(options);
+            _assetTransport = native;
+            _nativeAssetHost = native;
+
+            if (TryGetPlatformHandle() is null)
+            {
+                // The adapter is created on attach; map the virtual host before navigating.
+                AdapterCreated += HandleNativeAssetAdapterCreated;
+                return native.BaseUri;
+            }
+
+            return ApplyNativeAssetHost(native) ? native.BaseUri : StartLoopbackAssetServer();
+        }
+
+        return StartLoopbackAssetServer();
+    }
+
+    private bool ApplyNativeAssetHost(NativeAssetHost native)
+    {
+        if (!native.TryApply(TryGetPlatformHandle()))
+        {
+            return false;
+        }
+
+        _nativeAssetHost = null;
+        Source = native.BaseUri;
+        return true;
+    }
+
+    private Uri StartLoopbackAssetServer()
+    {
+        _nativeAssetHost = null;
+        AdapterCreated -= HandleNativeAssetAdapterCreated;
+
+        if (_assetTransport is NativeAssetHost native)
+        {
+            _ = native.DisposeAsync().AsTask();
+        }
+
+        var server = new EmbeddedAssetServer(_embeddedAssetOptions ?? new EmbeddedAssetOptions());
+        _assetTransport = server;
+        Source = server.BaseUri;
         return server.BaseUri;
+    }
+
+    private void HandleNativeAssetAdapterCreated(object? sender, WebViewAdapterEventArgs args)
+    {
+        AdapterCreated -= HandleNativeAssetAdapterCreated;
+        var native = _nativeAssetHost;
+        if (native is not null && ApplyNativeAssetHost(native))
+        {
+            return;
+        }
+
+        StartLoopbackAssetServer();
     }
 
     /// <inheritdoc />
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        if (_assetTransport is not null && TopLevel.GetTopLevel(this) is Window window)
+        if (_embeddedAssetsEnabled && TopLevel.GetTopLevel(this) is Window window)
         {
             AttachAssetServerWindow(window);
         }
@@ -110,6 +174,9 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private void HandleAssetServerWindowClosed(object? sender, EventArgs e)
     {
         DetachAssetServerWindow();
+        AdapterCreated -= HandleNativeAssetAdapterCreated;
+        _nativeAssetHost = null;
+
         var transport = _assetTransport;
         _assetTransport = null;
         if (transport is not null)
