@@ -5,6 +5,35 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-18
+
+### Added
+
+- The loopback asset server now supports HTTP/1.1 keep-alive connections, bounded concurrent
+  connections, and a configurable idle timeout (`EnableKeepAlive`, `IdleConnectionTimeout`,
+  `MaxRequestsPerConnection`, `MaxConnections`).
+- Conditional requests: `Last-Modified`/`If-Modified-Since`, `If-Range`, `If-None-Match` lists,
+  and wildcard ETags, in addition to the existing `ETag` support.
+- SPA fallback now covers dotted client-side routes when the browser sends
+  `Accept: text/html`, while missing asset requests still return 404.
+- Additional MIME types for `.webmanifest`, `.pdf`, `.zip`, `.csv`, and `.md`.
+- Host-side `ApiInvokeTimeout` (30 seconds by default) so a slow API implementation returns a
+  timeout error to React instead of leaving the promise pending.
+- `JavaScriptError` event and the reserved `avalonia:error` message. The bridge client forwards
+  window errors and unhandled promise rejections with stack, source, line, and column, deduplicated
+  and capped at 50 reports.
+- A Node-based test suite for `@avalonia-react/bridge` (11 tests) covering messaging, the typed
+  proxy, timeout/abort behavior, page unload, and error forwarding.
+
+### Changed
+
+- Package version is `0.4.0`.
+- CI now builds and tests the bridge client in addition to the two .NET test projects.
+
+### Fixed
+
+- The JavaScript error parser no longer throws on mistyped non-numeric fields.
+
 ## [0.3.0] - 2026-10-18
 
 ### Added

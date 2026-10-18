@@ -23,6 +23,17 @@ jobs:
         run: dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release --nologo -v minimal
       - name: Test source generator
         run: dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release --nologo -v minimal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install bridge client
+        run: npm --prefix client ci
+      - name: Build bridge client
+        run: npm --prefix client run build
+      - name: Test bridge client
+        run: npm --prefix client test
 
   pack:
     name: Pack packages

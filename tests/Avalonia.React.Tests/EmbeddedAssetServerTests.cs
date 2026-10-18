@@ -159,6 +159,135 @@ public sealed class EmbeddedAssetServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Falls_back_for_dotted_routes_when_the_browser_requests_html()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/workspace/dashboard.v2");
+        request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml");
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("<html>root</html>", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Does_not_fall_back_for_dotted_asset_requests()
+    {
+        using var response = await _client.GetAsync("/workspace/dashboard.v2");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Supports_last_modified_and_if_modified_since()
+    {
+        using var first = await _client.GetAsync("/assets/app.js");
+        var lastModified = first.Content.Headers.LastModified;
+        Assert.NotNull(lastModified);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/assets/app.js");
+        request.Headers.IfModifiedSince = lastModified;
+        using var second = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotModified, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Matches_any_etag_in_if_none_match()
+    {
+        using var first = await _client.GetAsync("/assets/app.js");
+        var etag = first.Headers.ETag!;
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/assets/app.js");
+        request.Headers.IfNoneMatch.ParseAdd("\"stale\"");
+        request.Headers.IfNoneMatch.Add(etag);
+        using var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotModified, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reuses_a_keep_alive_connection()
+    {
+        var port = _server.BaseUri.Port;
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        await using var stream = client.GetStream();
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+
+        var first = await SendKeepAliveRequestAsync(reader, stream, port, "/index.html");
+        Assert.Contains(" 200 ", first.StatusLine);
+        Assert.Contains("keep-alive", first.Connection);
+        Assert.Equal("<html>root</html>", first.Body);
+
+        var second = await SendKeepAliveRequestAsync(reader, stream, port, "/assets/app.js");
+        Assert.Contains(" 200 ", second.StatusLine);
+        Assert.Equal("console.log('app');", second.Body);
+    }
+
+    [Fact]
+    public async Task Closes_the_connection_when_keep_alive_is_disabled()
+    {
+        await using var server = new EmbeddedAssetServer(new EmbeddedAssetOptions
+        {
+            RootPath = _root,
+            EnableKeepAlive = false,
+        });
+        var port = server.BaseUri.Port;
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        await using var stream = client.GetStream();
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+
+        var response = await SendKeepAliveRequestAsync(reader, stream, port, "/index.html");
+
+        Assert.Contains("close", response.Connection);
+    }
+
+    private static async Task<RawResponse> SendKeepAliveRequestAsync(StreamReader reader, Stream stream, int port, string path)
+    {
+        var request = $"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(request));
+        await stream.FlushAsync();
+
+        var statusLine = await reader.ReadLineAsync() ?? string.Empty;
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        while (true)
+        {
+            var line = await reader.ReadLineAsync();
+            if (string.IsNullOrEmpty(line))
+            {
+                break;
+            }
+
+            var separator = line.IndexOf(':');
+            headers[line[..separator].Trim()] = line[(separator + 1)..].Trim();
+        }
+
+        var body = string.Empty;
+        if (headers.TryGetValue("Content-Length", out var lengthText) && int.TryParse(lengthText, out var length) && length > 0)
+        {
+            var buffer = new char[length];
+            var read = 0;
+            while (read < length)
+            {
+                var chunk = await reader.ReadAsync(buffer.AsMemory(read, length - read));
+                if (chunk == 0)
+                {
+                    break;
+                }
+
+                read += chunk;
+            }
+
+            body = new string(buffer, 0, read);
+        }
+
+        return new RawResponse(statusLine, body, headers.GetValueOrDefault("Connection", string.Empty));
+    }
+
+    private sealed record RawResponse(string StatusLine, string Body, string Connection);
+
+    [Fact]
     public void Defaults_to_the_loopback_transport()
     {
         var options = new EmbeddedAssetOptions();
@@ -166,6 +295,8 @@ public sealed class EmbeddedAssetServerTests : IAsyncLifetime
         Assert.Equal(EmbeddedAssetTransport.Loopback, options.Transport);
         Assert.Equal("index.html", options.SpaFallback);
         Assert.Equal("avalonia-react.local", options.NativeHostName);
+        Assert.True(options.EnableKeepAlive);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.IdleConnectionTimeout);
     }
 
     private async Task<string> SendRawAsync(string requestLine)

@@ -62,6 +62,9 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <summary>Raised when an application <see cref="MessageReceived"/> handler throws.</summary>
     public event EventHandler<ReactBridgeErrorEventArgs>? BridgeError;
 
+    /// <summary>Raised when the React client forwards a window error or an unhandled promise rejection.</summary>
+    public event EventHandler<ReactJavaScriptErrorEventArgs>? JavaScriptError;
+
     /// <summary>Gets the current page lifecycle state.</summary>
     public ReactLoadState LoadState => _loadState;
 
@@ -111,6 +114,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// Defaults to 1024.
     /// </summary>
     public int MaxQueuedBridgeMessages { get; set; } = 1024;
+
+    /// <summary>
+    /// Gets or sets how long a host API implementation may run before the caller receives a timeout
+    /// error. Defaults to 30 seconds; set to <see cref="TimeSpan.Zero"/> to disable the timeout.
+    /// </summary>
+    public TimeSpan ApiInvokeTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Gets the additional origins allowed to navigate inside the WebView when
@@ -762,6 +771,23 @@ public sealed class AvaloniaReactWebView : NativeWebView
             return;
         }
 
+        if (messageType == ReactBridgeMessages.Error)
+        {
+            var error = ReactJavaScriptErrorParser.Parse(payload);
+            Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    JavaScriptError?.Invoke(this, error);
+                }
+                catch (Exception exception)
+                {
+                    BridgeError?.Invoke(this, new ReactBridgeErrorEventArgs(exception));
+                }
+            });
+            return;
+        }
+
         var message = new ReactMessageReceivedEventArgs(messageType, payload);
         Dispatcher.UIThread.Post(() =>
         {
@@ -818,7 +844,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
             var invocation = implementationMethod.Invoke(registration.Implementation, arguments);
             if (invocation is Task task)
             {
-                await task.ConfigureAwait(false);
+                await AwaitInvocationAsync(task).ConfigureAwait(false);
                 result = task.GetType().IsGenericType ? task.GetType().GetProperty("Result")?.GetValue(task) : null;
             }
             else
@@ -844,6 +870,33 @@ public sealed class AvaloniaReactWebView : NativeWebView
                 // The page navigated away or failed; the JavaScript caller will time out or unload.
             }
         }
+    }
+
+    private async Task AwaitInvocationAsync(Task task)
+    {
+        if (ApiInvokeTimeout <= TimeSpan.Zero)
+        {
+            await task.ConfigureAwait(false);
+            return;
+        }
+
+        using var timeoutCancellation = new CancellationTokenSource();
+        var timeout = Task.Delay(ApiInvokeTimeout, timeoutCancellation.Token);
+        var completed = await Task.WhenAny(task, timeout).ConfigureAwait(false);
+        if (ReferenceEquals(completed, task))
+        {
+            timeoutCancellation.Cancel();
+            await task.ConfigureAwait(false);
+            return;
+        }
+
+        // Observe a fault that arrives after the timeout so it does not surface as an unobserved exception.
+        _ = task.ContinueWith(
+            static faulted => _ = faulted.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        throw new TimeoutException($"The host API call did not complete within {ApiInvokeTimeout.TotalSeconds:0.##} seconds.");
     }
 
     private static MethodInfo FindImplementationMethod(Type implementationType, MethodInfo interfaceMethod)

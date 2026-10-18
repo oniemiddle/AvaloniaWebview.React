@@ -21,6 +21,9 @@ public static class ReactBridgeMessages
     /// <summary>Sent by the React client to request the current theme immediately.</summary>
     public const string ThemeRequest = "theme:request";
 
+    /// <summary>Sent by the React client when a window error or unhandled promise rejection occurs.</summary>
+    public const string Error = "avalonia:error";
+
     /// <summary>The DOM event name used by the host to deliver messages to JavaScript.</summary>
     public const string DomainEventName = "avalonia-react:message";
 }

@@ -105,6 +105,8 @@ webView.Reload();
 - `NewWindowRequested` is handled by default: same-origin requests navigate the current view, external requests follow `ExternalNavigationPolicy`.
 - `EnableDevTools` requests the platform dev tools (defaults to true in Debug through build metadata). `EnableWindowsOffscreenComposition` sets WebView2's experimental offscreen composition, which is required when Avalonia content renders above the WebView (for example a loading overlay).
 - `BridgeError` reports exceptions thrown by application `MessageReceived` handlers instead of letting them escape the WebView event loop.
+- `JavaScriptError` receives window errors and unhandled promise rejections forwarded by the bridge client, including message, stack, source, line, and column.
+- `ApiInvokeTimeout` (30 seconds by default) returns a timeout error to React when a host API implementation runs too long; set it to `TimeSpan.Zero` to disable.
 - `RegisterApi` rejects duplicate API names; `UnregisterApi` removes one.
 
 ### Serve published assets
@@ -117,12 +119,13 @@ reactView.UseEmbeddedAssets();
 
 This starts a loopback HTTP server on an ephemeral port and serves `wwwroot` with:
 
-- SPA fallback to `index.html` for extensionless routes;
+- SPA fallback to `index.html` for extensionless routes and for routes whose browser request accepts `text/html` (including dotted client-side routes); missing asset requests still return 404;
 - immutable cache headers for files under `assets/` and `no-cache` for `index.html`;
-- `ETag`, `HEAD`, and single-range requests;
+- `ETag` (including `If-None-Match` lists), `Last-Modified`/`If-Modified-Since`, `If-Range`, `HEAD`, and single-range requests;
+- HTTP/1.1 keep-alive connections with idle timeout and a bounded concurrent connection count;
 - path traversal protection and a strict `Host` header check.
 
-Configure the root directory, fallback file, or caching through `EmbeddedAssetOptions`. The server binds only to `127.0.0.1` and stops when the host window closes. Set `SourceMode="EmbeddedAssets"` in a Debug build to test the published path without switching to Release. On macOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
+Configure the root directory, fallback file, caching, keep-alive, or connection limits through `EmbeddedAssetOptions` (`EnableKeepAlive`, `IdleConnectionTimeout`, `MaxRequestsPerConnection`, `MaxConnections`). The server binds only to `127.0.0.1` and stops when the host window closes. Set `SourceMode="EmbeddedAssets"` in a Debug build to test the published path without switching to Release. On macOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
 
 On Windows, `EmbeddedAssetTransport.NativeHost` maps the asset folder to a WebView2 virtual host instead of opening a loopback port. It requires a Windows target framework such as `net10.0-windows`; the cross-platform `net10.0` build keeps using loopback:
 
@@ -152,7 +155,7 @@ postMessage("account:changed", { id: 42 });
 
 The Avalonia WebView exposes JavaScript's `invokeCSharpAction` helper. The client uses it to send JSON to .NET. Subscribe after your React app mounts so frontend handlers are ready before the host sends messages. For the initial theme, subscribe in the entry module before rendering.
 
-`avalonia:ready`, `avalonia:invoke`, `avalonia:invoke:result`, `theme`, and `theme:request` are reserved bridge messages handled by the control; application messages must use different names. `MessageReceived` only receives application messages. The first `avalonia:ready` from a page raises `BridgeReady`; use it to dismiss startup UI once React has mounted.
+`avalonia:ready`, `avalonia:invoke`, `avalonia:invoke:result`, `avalonia:error`, `theme`, and `theme:request` are reserved bridge messages handled by the control; application messages must use different names. `MessageReceived` only receives application messages. The first `avalonia:ready` from a page raises `BridgeReady`; use it to dismiss startup UI once React has mounted.
 
 `AvaloniaReactWebView` sends a `theme` message when the WebView's actual theme variant changes and once after every successful navigation. The payload is `{ theme: "light" | "dark" }`: `ThemeVariant.Default` follows the system theme, and custom variants resolve through their inherited variant or fall back to the system theme, so React always receives a semantic value. Send `{ type: "theme:request", payload: {} }` after subscribing to receive the current theme immediately, which is the reliable way to capture the initial value before the first navigation message arrives.
 
@@ -244,9 +247,11 @@ Build all three NuGet packages with `dotnet pack src/Avalonia.React/Avalonia.Rea
 dotnet build Avalonia.React.sln -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
 dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
 dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
+npm --prefix client run build
+npm --prefix client test
 ```
 
-The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, and the loopback asset server. The generator tests compile generated interfaces and assert the diagnostics. GitHub Actions runs the same tests on Windows and Linux and packs all three packages.
+The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, JavaScript error parsing, and the loopback asset server (including keep-alive and conditional requests). The generator tests compile generated interfaces and assert the diagnostics. The client tests run on Node's built-in test runner and exercise messaging, the typed proxy, timeouts, aborts, page unload, and error forwarding. GitHub Actions runs all three suites on Windows and Linux and packs all three packages.
 
 ## Platform notes
 

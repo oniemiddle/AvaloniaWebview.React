@@ -55,5 +55,6 @@ internal static class ReactBridgeProtocol
             or ReactBridgeMessages.Invoke
             or ReactBridgeMessages.InvokeResult
             or ReactBridgeMessages.Theme
-            or ReactBridgeMessages.ThemeRequest;
+            or ReactBridgeMessages.ThemeRequest
+            or ReactBridgeMessages.Error;
 }

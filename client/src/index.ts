@@ -34,6 +34,7 @@ export const bridgeMessageTypes = {
   invokeResult: "avalonia:invoke:result",
   theme: "theme",
   themeRequest: "theme:request",
+  error: "avalonia:error",
 } as const;
 
 /** DOM event name used by the host to deliver messages to JavaScript. */
@@ -104,6 +105,41 @@ subscribe<ApiInvocationResult>(bridgeMessageTypes.invokeResult, ({ requestId, re
   else pending.resolve(result);
 });
 
+const reportedErrors = new Set<string>();
+
+function reportJavaScriptError(
+  kind: "error" | "unhandledrejection",
+  error: unknown,
+  source?: string,
+  line?: number,
+  column?: number,
+): void {
+  if (!isBridgeAvailable()) {
+    return;
+  }
+
+  const record = typeof error === "object" && error !== null
+    ? (error as { message?: unknown; stack?: unknown })
+    : undefined;
+  const message = typeof error === "string"
+    ? error
+    : typeof record?.message === "string"
+      ? record.message
+      : "Unhandled JavaScript error";
+  const stack = typeof record?.stack === "string" ? record.stack : undefined;
+  const key = `${kind}:${message}:${source ?? ""}:${line ?? ""}:${column ?? ""}`;
+  if (reportedErrors.has(key) || reportedErrors.size >= 50) {
+    return;
+  }
+
+  reportedErrors.add(key);
+  try {
+    postMessage(bridgeMessageTypes.error, { kind, message, stack, source, line, column });
+  } catch {
+    // The bridge can disappear while the page is unloading; error reporting is best-effort.
+  }
+}
+
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     const error = new Error("The page unloaded before the host API call completed.");
@@ -111,6 +147,21 @@ if (typeof window !== "undefined") {
       pending.reject(error);
     }
     pendingApiCalls.clear();
+  });
+
+  window.addEventListener("error", (event) => {
+    const errorEvent = event as ErrorEvent;
+    reportJavaScriptError(
+      "error",
+      errorEvent.error ?? errorEvent.message,
+      errorEvent.filename,
+      errorEvent.lineno,
+      errorEvent.colno,
+    );
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    reportJavaScriptError("unhandledrejection", (event as PromiseRejectionEvent).reason);
   });
 }
 

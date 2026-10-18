@@ -39,4 +39,6 @@ const value = await invokeHostApiWithOptions<string>(
 
 Calls rejected because the host page unloads reject with an `Error` instead of staying pending forever. `isBridgeAvailable()` tells whether the page runs inside Avalonia's WebView, and `bridgeMessageTypes` lists the reserved bridge message names.
 
+The client also forwards `window` errors and unhandled promise rejections as the reserved `avalonia:error` message, which raises `AvaloniaReactWebView.JavaScriptError` on the host. Duplicate errors are reported at most once, and reporting is disabled when the bridge is unavailable.
+
 The message format is `{ "type": string, "payload": any JSON value }`. API calls use a request ID and return either a result or an error through the same message bridge.
