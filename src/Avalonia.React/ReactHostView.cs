@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -240,6 +241,8 @@ public sealed class ReactHostView : Grid, IDisposable
     }
 
     /// <summary>Registers an implementation of a generated API contract.</summary>
+    [RequiresUnreferencedCode("Host API registration reflects over the interface methods and the implementation type.")]
+    [RequiresDynamicCode("Host API invocation may require runtime code generation for JSON serialization.")]
     public void RegisterApi<TApi>(TApi implementation, string? apiName = null) where TApi : class =>
         WebView.RegisterApi(implementation, apiName);
 
@@ -247,6 +250,8 @@ public sealed class ReactHostView : Grid, IDisposable
     public bool UnregisterApi(string apiName) => WebView.UnregisterApi(apiName);
 
     /// <summary>Sends a JSON message to the React client.</summary>
+    [RequiresUnreferencedCode("PostMessageAsync serializes the payload with reflection-based System.Text.Json.")]
+    [RequiresDynamicCode("PostMessageAsync JSON serialization may require runtime code generation.")]
     public Task<string?> PostMessageAsync<T>(string type, T payload) => WebView.PostMessageAsync(type, payload);
 
     /// <summary>Reloads the current page.</summary>

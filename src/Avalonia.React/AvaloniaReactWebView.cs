@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Reflection;
@@ -382,6 +383,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <typeparam name="TApi">The generated C# interface for an exported TypeScript API.</typeparam>
     /// <param name="implementation">The host-side implementation.</param>
     /// <param name="apiName">The JavaScript API name. Defaults to the generated interface name without its leading I.</param>
+    [RequiresUnreferencedCode("Host API registration reflects over the interface methods and the implementation type.")]
+    [RequiresDynamicCode("Host API invocation may require runtime code generation for JSON serialization.")]
     public void RegisterApi<TApi>(TApi implementation, string? apiName = null) where TApi : class
     {
         ThrowIfShutdown();
@@ -435,6 +438,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <param name="type">A message name, such as <c>account:changed</c>.</param>
     /// <param name="payload">Any value supported by <see cref="JsonSerializer"/>.</param>
     /// <returns>The result returned by the native WebView JavaScript execution.</returns>
+    [RequiresUnreferencedCode("PostMessageAsync serializes the payload with reflection-based System.Text.Json.")]
+    [RequiresDynamicCode("PostMessageAsync JSON serialization may require runtime code generation.")]
     public Task<string?> PostMessageAsync<T>(string type, T payload)
     {
         ThrowIfShutdown();
@@ -1174,6 +1179,8 @@ public sealed class ReactMessageReceivedEventArgs(string type, JsonElement paylo
     public JsonElement Payload { get; } = payload;
 
     /// <summary>Deserializes the message payload to a .NET type.</summary>
+    [RequiresUnreferencedCode("GetPayload uses reflection-based System.Text.Json deserialization.")]
+    [RequiresDynamicCode("GetPayload JSON deserialization may require runtime code generation.")]
     public T? GetPayload<T>(JsonSerializerOptions? options = null) =>
         Payload.Deserialize<T>(options ?? JsonSerializerOptions.Web);
 }

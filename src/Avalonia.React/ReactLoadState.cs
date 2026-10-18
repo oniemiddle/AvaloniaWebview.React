@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -43,6 +44,8 @@ public sealed class ReactBridgeReadyEventArgs(JsonElement payload) : EventArgs
     public JsonElement Payload { get; } = payload;
 
     /// <summary>Deserializes the ready payload to a .NET type.</summary>
+    [RequiresUnreferencedCode("GetPayload uses reflection-based System.Text.Json deserialization.")]
+    [RequiresDynamicCode("GetPayload JSON deserialization may require runtime code generation.")]
     public T? GetPayload<T>(JsonSerializerOptions? options = null) =>
         Payload.Deserialize<T>(options ?? JsonSerializerOptions.Web);
 }

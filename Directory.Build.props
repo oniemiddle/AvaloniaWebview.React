@@ -3,6 +3,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AvaloniaVersion>12.1.0</AvaloniaVersion>
-    <AvaloniaReactVersion>0.8.0</AvaloniaReactVersion>
+    <AvaloniaReactVersion>0.9.0</AvaloniaReactVersion>
   </PropertyGroup>
 </Project>

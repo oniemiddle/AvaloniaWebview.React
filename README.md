@@ -301,6 +301,10 @@ The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm 
 
 Set `AvaloniaReactVersion` in `Directory.Build.props`, commit, and push a matching `vX.Y.Z` tag. The release workflow validates the tag, runs all tests, packs the three packages, publishes them to NuGet when the `NUGET_API_KEY` repository secret is configured, and creates a GitHub release with the `.nupkg` files attached.
 
+## Trimming and Native AOT
+
+The control and asset server are ordinary libraries, but host API registration and payload (de)serialization use reflection and reflection-based `System.Text.Json`. Those members are annotated with `RequiresUnreferencedCode` and `RequiresDynamicCode`, so enabling the trim/AOT analyzers reports call sites that need attention. If the application is trimmed or compiled with Native AOT, preserve the generated interface implementations and payload types (for example with `DynamicDependency` or a trim descriptor) or avoid the reflection-based API surface. The source generator produces interfaces only; it does not generate `JsonSerializerContext` metadata. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements.
+
 ## Platform notes
 
 - Windows uses the installed Microsoft Edge WebView2 runtime.
