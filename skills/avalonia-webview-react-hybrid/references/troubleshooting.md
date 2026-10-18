@@ -99,17 +99,16 @@ This is the security boundary, not a bridge bug.
 ### API works untrimmed, fails trimmed
 
 - Use `HostApiBridge.Register(...)`, not the reflection `RegisterApi<TApi>` overload.
-- DTOs/enums/collections need JSON metadata. Add a source-generated context and install it before WebView creation:
+- Generated DTOs, enums, lists, dictionaries, and nullable values are covered by the generated type-info resolver. If a payload type is outside generated `.d.ts` contracts, add it to a source-generated context and install it before WebView creation:
 
   ```csharp
-  [JsonSerializable(typeof(UserProfile))]
-  [JsonSerializable(typeof(IReadOnlyList<UserProfile>))]
+  [JsonSerializable(typeof(MyMessagePayload))]
   internal partial class AppJsonContext : JsonSerializerContext { }
 
   ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
   ```
 
-- Add every root payload type used by host APIs or `PostMessageAsync`; nested types are discovered from roots.
+- Add every custom root payload type used by `PostMessageAsync` or `InvokeReactAsync`; nested types are discovered from roots.
 - Do not suppress the trimming warning by ignoring it; the call can still fail at runtime.
 
 ## 4. Messages or theme do not work

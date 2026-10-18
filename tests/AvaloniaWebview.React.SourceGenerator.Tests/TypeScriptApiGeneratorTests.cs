@@ -44,6 +44,14 @@ public sealed class TypeScriptApiGeneratorTests
                 {
                 }
             }
+
+            public static class ReactJsonSerializerDefaults
+            {
+                public static void AddTypeInfoResolver(
+                    System.Text.Json.Serialization.Metadata.IJsonTypeInfoResolver resolver)
+                {
+                }
+            }
         }
         """;
 
@@ -158,7 +166,7 @@ public sealed class TypeScriptApiGeneratorTests
             export interface HostApi {
               save(names: string[], map: Record<string, number>, created: Date): Promise<void>;
             }
-            """).SingleSource();
+            """).Sources().Single(item => item.Contains("public partial interface IHostApi"));
 
         Assert.Contains("IReadOnlyList<string> names", source);
         Assert.Contains("IReadOnlyDictionary<string, double> map", source);
@@ -238,7 +246,7 @@ public sealed class TypeScriptApiGeneratorTests
             }
             """);
 
-        var source = run.SingleSource();
+        var source = run.Sources().Single(item => item.Contains("public partial interface IHostApi"));
         Assert.Contains("public static partial class HostApiBridge", source);
         Assert.Contains("public static void Register(", source);
         Assert.Contains("global::AvaloniaWebview.React.AvaloniaReactWebView webView", source);
@@ -336,7 +344,7 @@ public sealed class TypeScriptApiGeneratorTests
             """);
 
         var sources = run.Sources().ToArray();
-        Assert.Equal(2, sources.Length);
+        Assert.Equal(3, sources.Length);
         var enumSource = Assert.Single(sources, source => source.Contains("public enum Status"));
         Assert.Contains("JsonStringEnumConverter<Status>", enumSource);
         Assert.Contains("JsonStringEnumMemberName(\"active\")", enumSource);
@@ -358,7 +366,7 @@ public sealed class TypeScriptApiGeneratorTests
             }
             """);
 
-        var source = run.SingleSource();
+        var source = run.Sources().Single(item => item.Contains("public enum Priority"));
         Assert.Contains("public enum Priority", source);
         Assert.Contains("Low = 1,", source);
         Assert.Contains("High = 5,", source);
@@ -457,6 +465,41 @@ public sealed class TypeScriptApiGeneratorTests
         var sources = run.Sources().ToArray();
         Assert.Contains(sources, source => source.Contains("public partial class BaseEntity"));
         Assert.Contains(sources, source => source.Contains("public partial class User : BaseEntity"));
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Generates_self_contained_json_support_for_dtos_enums_and_collections()
+    {
+        var run = Generate("""
+            // @namespace MyApp.Frontend
+            export enum Status {
+              Active = "active",
+              Disabled = "disabled",
+            }
+
+            export interface UserProfile {
+              id: number;
+              name: string;
+              nickname?: string;
+              tags: string[];
+              status: Status;
+              score?: number;
+            }
+
+            export interface HostApi {
+              save(profile: UserProfile): Promise<UserProfile[]>;
+            }
+            """);
+
+        var support = run.Sources().Single(source =>
+            source.Contains("AvaloniaReactGeneratedTypeInfoResolver"));
+        Assert.Contains("UserProfileJsonConverter", support);
+        Assert.Contains("StatusJsonConverter", support);
+        Assert.Contains("ReactListConverter<global::MyApp.Frontend.UserProfile>", support);
+        Assert.Contains("ReactListConverter<string>", support);
+        Assert.Contains("ReactJsonSerializerDefaults.AddTypeInfoResolver", support);
+        Assert.Contains("ModuleInitializer", support);
         Assert.Empty(run.CompilationErrors());
     }
 

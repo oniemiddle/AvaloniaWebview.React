@@ -204,15 +204,13 @@ If an interface mixes methods and properties, it is treated as an API and its pr
 
 ## Trimming / Native AOT
 
-Generated registration avoids method reflection. Primitive API arguments/results and host messages are reflection-free. For DTOs, enums, arrays, dictionaries, and custom message payloads, add a source-generated JSON context:
+Generated registration avoids method reflection. Primitive API arguments/results and host messages are reflection-free. Generated DTOs, enums, arrays, dictionaries, and nullable values are covered by a generated type-info resolver installed automatically. For custom payload types outside generated contracts, add a source-generated JSON context:
 
 ```csharp
 using System.Text.Json.Serialization;
 using AvaloniaWebview.React;
 using MyApp.Frontend;
 
-[JsonSerializable(typeof(UserProfile))]
-[JsonSerializable(typeof(IReadOnlyList<UserProfile>))]
 [JsonSerializable(typeof(MyMessagePayload))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
@@ -231,7 +229,7 @@ ReactHost.BridgeJsonSerializerOptions = AppJsonContext.Default.Options;
 
 Prefer `HostApiBridge.Register(...)` over `RegisterApi<TApi>(...)`. The reflection overload remains available for non-trimmed apps but is annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`.
 
-If an API works in Debug but fails after `PublishTrimmed=true` with a reflection-disabled message, a DTO/enum root type is missing from the context. Add every root type the app sends or receives; nested DTO properties are discovered automatically by the context generator.
+If an API works in Debug but fails after `PublishTrimmed=true` with a reflection-disabled message, the first check is whether the payload type is a generated `.d.ts` contract; those are covered automatically. For custom message/React-call payload types, add every root type the app sends or receives to the context; nested types are discovered from roots.
 
 ## Multi-window and tab moves
 

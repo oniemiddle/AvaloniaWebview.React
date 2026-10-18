@@ -136,6 +136,8 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
         {
             var localTypes = BuildLocalTypes(context, parsedFile.Declarations);
             var mapper = CreateMapper(context, parsedFile.File, parsedFile.NamespaceName, localTypes, globalTypes);
+            parsedFile.LocalTypes = localTypes;
+            parsedFile.Mapper = mapper;
             var declarationIndex = 0;
             foreach (var declaration in parsedFile.Declarations)
             {
@@ -163,6 +165,8 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
                 declarationIndex++;
             }
         }
+
+        EmitJsonSupport(context, parsedFiles, globalTypes);
     }
 
     private static Dictionary<string, Declaration> BuildLocalTypes(
@@ -734,6 +738,522 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
             _ => null,
         };
 
+    private static void EmitJsonSupport(
+        SourceProductionContext context,
+        List<ParsedFile> files,
+        Dictionary<string, Declaration> globalTypes)
+    {
+        var byCSharp = new Dictionary<string, Declaration>(StringComparer.Ordinal);
+        foreach (var file in files)
+        {
+            foreach (var declaration in file.Declarations)
+            {
+                if (declaration.Kind is DeclarationKind.Dto or DeclarationKind.Enum)
+                {
+                    byCSharp["global::" + declaration.NamespaceName + "." + declaration.CSharpName] = declaration;
+                }
+            }
+        }
+
+        var jsonTypes = new HashSet<string>(StringComparer.Ordinal);
+        var converters = new Dictionary<string, string>(StringComparer.Ordinal);
+        var converterSources = new List<string>();
+
+        foreach (var file in files)
+        {
+            var mapper = file.Mapper;
+            if (mapper is null)
+            {
+                continue;
+            }
+
+            foreach (var declaration in file.Declarations)
+            {
+                if (declaration.Kind == DeclarationKind.Dto)
+                {
+                    var fullType = "global::" + declaration.NamespaceName + "." + declaration.CSharpName;
+                    var converterName = ToJsonConverterName(declaration);
+                    var properties = CollectDtoProperties(declaration, file.LocalTypes, globalTypes);
+                    converters[fullType] = converterName;
+                    jsonTypes.Add(fullType);
+                    converterSources.Add(GenerateDtoJsonConverter(
+                        declaration,
+                        fullType,
+                        converterName,
+                        properties,
+                        mapper));
+                    foreach (var property in properties)
+                    {
+                        var propertyType = mapper.Map(property.Type);
+                        if (property.Optional)
+                        {
+                            propertyType = MakeNullable(propertyType);
+                        }
+
+                        AddJsonType(jsonTypes, propertyType, byCSharp);
+                    }
+                }
+                else if (declaration.Kind == DeclarationKind.Enum)
+                {
+                    var fullType = "global::" + declaration.NamespaceName + "." + declaration.CSharpName;
+                    var converterName = ToJsonConverterName(declaration);
+                    converters[fullType] = converterName;
+                    jsonTypes.Add(fullType);
+                    converterSources.Add(GenerateEnumJsonConverter(declaration, fullType, converterName));
+                }
+                else if (declaration.Kind == DeclarationKind.Api)
+                {
+                    foreach (var method in CollectRegistrationMethods(declaration, file.LocalTypes, globalTypes))
+                    {
+                        foreach (var argument in SplitTopLevel(method.Arguments, ','))
+                        {
+                            var argumentText = argument.Trim();
+                            if (argumentText.Length == 0 || argumentText.StartsWith("this:", StringComparison.Ordinal))
+                            {
+                                continue;
+                            }
+
+                            var match = ParameterPattern.Match(argumentText);
+                            if (match.Success)
+                            {
+                                AddJsonType(jsonTypes, mapper.Map(match.Groups["type"].Value), byCSharp);
+                            }
+                        }
+
+                        var returnType = MapReturnType(method.ReturnType, mapper, out _);
+                        if (returnType.StartsWith("Task<", StringComparison.Ordinal) && returnType.EndsWith(">", StringComparison.Ordinal))
+                        {
+                            AddJsonType(jsonTypes, returnType.Substring(5, returnType.Length - 6), byCSharp);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!jsonTypes.Any(type =>
+                byCSharp.ContainsKey(type) ||
+                TryUnwrapMappedGeneric(type, "IReadOnlyList", out _) ||
+                TryUnwrapMappedGeneric(type, "IReadOnlyDictionary", out _)))
+        {
+            return;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine("// <auto-generated />");
+        builder.AppendLine("#nullable enable");
+        builder.AppendLine("#pragma warning disable IL2026, IL3050 // Generated converters require the generated resolver for trimmed/AOT payloads.");
+        builder.AppendLine("namespace AvaloniaWebview.React.Generated;");
+        builder.AppendLine();
+        builder.AppendLine("internal static class ReactJsonHelpers");
+        builder.AppendLine("{");
+        builder.AppendLine("    public static T? Deserialize<T>(global::System.Text.Json.JsonElement element, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        var typeInfo = (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));");
+        builder.AppendLine("        return global::System.Text.Json.JsonSerializer.Deserialize(element, typeInfo);");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    public static void Serialize<T>(global::System.Text.Json.Utf8JsonWriter writer, T value, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        var typeInfo = (global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));");
+        builder.AppendLine("        global::System.Text.Json.JsonSerializer.Serialize(writer, value, typeInfo);");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        builder.AppendLine();
+        builder.AppendLine("internal sealed class ReactListConverter<T> : global::System.Text.Json.Serialization.JsonConverter<global::System.Collections.Generic.IReadOnlyList<T>>");
+        builder.AppendLine("{");
+        builder.AppendLine("    public override global::System.Collections.Generic.IReadOnlyList<T>? Read(ref global::System.Text.Json.Utf8JsonReader reader, global::System.Type typeToConvert, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        using var document = global::System.Text.Json.JsonDocument.ParseValue(ref reader);");
+        builder.AppendLine("        var list = new global::System.Collections.Generic.List<T>();");
+        builder.AppendLine("        foreach (var element in document.RootElement.EnumerateArray())");
+        builder.AppendLine("        {");
+        builder.AppendLine("            list.Add(element.ValueKind == global::System.Text.Json.JsonValueKind.Null");
+        builder.AppendLine("                ? default!");
+        builder.AppendLine("                : ReactJsonHelpers.Deserialize<T>(element, options)!);");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        return list;");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    public override void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Collections.Generic.IReadOnlyList<T> value, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        writer.WriteStartArray();");
+        builder.AppendLine("        foreach (var element in value)");
+        builder.AppendLine("        {");
+        builder.AppendLine("            ReactJsonHelpers.Serialize(writer, element, options);");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        writer.WriteEndArray();");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        builder.AppendLine();
+        builder.AppendLine("internal sealed class ReactDictionaryConverter<T> : global::System.Text.Json.Serialization.JsonConverter<global::System.Collections.Generic.IReadOnlyDictionary<string, T>>");
+        builder.AppendLine("{");
+        builder.AppendLine("    public override global::System.Collections.Generic.IReadOnlyDictionary<string, T>? Read(ref global::System.Text.Json.Utf8JsonReader reader, global::System.Type typeToConvert, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        using var document = global::System.Text.Json.JsonDocument.ParseValue(ref reader);");
+        builder.AppendLine("        var dictionary = new global::System.Collections.Generic.Dictionary<string, T>(global::System.StringComparer.Ordinal);");
+        builder.AppendLine("        foreach (var property in document.RootElement.EnumerateObject())");
+        builder.AppendLine("        {");
+        builder.AppendLine("            dictionary[property.Name] = property.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null");
+        builder.AppendLine("                ? default!");
+        builder.AppendLine("                : ReactJsonHelpers.Deserialize<T>(property.Value, options)!;");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        return dictionary;");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.AppendLine("    public override void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Collections.Generic.IReadOnlyDictionary<string, T> value, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        writer.WriteStartObject();");
+        builder.AppendLine("        foreach (var pair in value)");
+        builder.AppendLine("        {");
+        builder.AppendLine("            writer.WritePropertyName(pair.Key);");
+        builder.AppendLine("            ReactJsonHelpers.Serialize(writer, pair.Value, options);");
+        builder.AppendLine("        }");
+        builder.AppendLine();
+        builder.AppendLine("        writer.WriteEndObject();");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        builder.AppendLine();
+        foreach (var converterSource in converterSources)
+        {
+            builder.AppendLine(converterSource);
+        }
+
+        builder.AppendLine("public sealed class AvaloniaReactGeneratedTypeInfoResolver : global::System.Text.Json.Serialization.Metadata.IJsonTypeInfoResolver");
+        builder.AppendLine("{");
+        builder.AppendLine("    public global::System.Text.Json.Serialization.Metadata.JsonTypeInfo? GetTypeInfo(global::System.Type type, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        foreach (var type in jsonTypes.OrderBy(item => item, StringComparer.Ordinal))
+        {
+            var entry = CreateJsonResolverEntry(type, converters, byCSharp);
+            if (entry is not null)
+            {
+                builder.Append("        ").AppendLine(entry);
+            }
+        }
+
+        builder.AppendLine("        return null;");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        builder.AppendLine();
+        builder.AppendLine("internal static class AvaloniaReactGeneratedJsonRegistration");
+        builder.AppendLine("{");
+        builder.AppendLine("    [global::System.Runtime.CompilerServices.ModuleInitializer]");
+        builder.AppendLine("    internal static void Initialize()");
+        builder.AppendLine("    {");
+        builder.AppendLine("        global::AvaloniaWebview.React.ReactJsonSerializerDefaults.AddTypeInfoResolver(new AvaloniaReactGeneratedTypeInfoResolver());");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        builder.AppendLine("#pragma warning restore IL2026, IL3050");
+
+        context.AddSource(
+            "AvaloniaReactGeneratedJsonSupport.g.cs",
+            SourceText.From(builder.ToString(), Encoding.UTF8));
+    }
+
+    private static List<RawProperty> CollectDtoProperties(
+        Declaration declaration,
+        Dictionary<string, Declaration> localTypes,
+        Dictionary<string, Declaration> globalTypes)
+    {
+        var properties = new List<RawProperty>();
+        var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(Declaration current)
+        {
+            if (!visited.Add(current.TypeScriptName))
+            {
+                return;
+            }
+
+            foreach (var baseName in current.BaseNames)
+            {
+                if (!localTypes.TryGetValue(baseName, out var baseDeclaration) &&
+                    !globalTypes.TryGetValue(baseName, out baseDeclaration))
+                {
+                    continue;
+                }
+
+                if (baseDeclaration.Kind == DeclarationKind.Dto)
+                {
+                    Add(baseDeclaration);
+                }
+            }
+
+            foreach (var property in current.Properties)
+            {
+                if (indexes.TryGetValue(property.Name, out var index))
+                {
+                    properties[index] = property;
+                }
+                else
+                {
+                    indexes.Add(property.Name, properties.Count);
+                    properties.Add(property);
+                }
+            }
+        }
+
+        Add(declaration);
+        return properties;
+    }
+
+    private static string GenerateDtoJsonConverter(
+        Declaration declaration,
+        string fullType,
+        string converterName,
+        List<RawProperty> properties,
+        TypeMapper mapper)
+    {
+        var builder = new StringBuilder();
+        builder.Append("internal sealed class ").Append(converterName)
+            .Append(" : global::System.Text.Json.Serialization.JsonConverter<").Append(fullType).AppendLine(">");
+        builder.AppendLine("{");
+        builder.Append("    public override ").Append(fullType)
+            .AppendLine(" Read(ref global::System.Text.Json.Utf8JsonReader reader, global::System.Type typeToConvert, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        using var document = global::System.Text.Json.JsonDocument.ParseValue(ref reader);");
+        builder.AppendLine("        var root = document.RootElement;");
+        builder.Append("        var value = new ").Append(fullType).AppendLine("();");
+        var index = 0;
+        foreach (var property in properties)
+        {
+            var propertyType = mapper.Map(property.Type);
+            if (property.Optional)
+            {
+                propertyType = MakeNullable(propertyType);
+            }
+
+            var propertyName = ToPascal(property.Name);
+            if (property.Optional)
+            {
+                var local = "element_" + index.ToString(CultureInfo.InvariantCulture);
+                builder.Append("        if (root.TryGetProperty(").Append(Quote(property.Name)).Append(", out var ").Append(local).AppendLine("))");
+                builder.AppendLine("        {");
+                builder.Append("            value.").Append(propertyName)
+                    .Append(" = global::AvaloniaWebview.React.Generated.ReactJsonHelpers.Deserialize<").Append(propertyType)
+                    .Append(">(").Append(local).AppendLine(", options)!;");
+                builder.AppendLine("        }");
+            }
+            else
+            {
+                builder.Append("        value.").Append(propertyName)
+                    .Append(" = global::AvaloniaWebview.React.Generated.ReactJsonHelpers.Deserialize<").Append(propertyType)
+                    .Append(">(root.GetProperty(").Append(Quote(property.Name)).AppendLine("), options)!;");
+            }
+
+            index++;
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("        return value;");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.Append("    public override void Write(global::System.Text.Json.Utf8JsonWriter writer, ").Append(fullType)
+            .AppendLine(" value, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        writer.WriteStartObject();");
+        foreach (var property in properties)
+        {
+            builder.Append("        writer.WritePropertyName(").Append(Quote(property.Name)).AppendLine(");");
+            builder.Append("        global::AvaloniaWebview.React.Generated.ReactJsonHelpers.Serialize(writer, value.")
+                .Append(ToPascal(property.Name)).AppendLine(", options);");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("        writer.WriteEndObject();");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        return builder.ToString();
+    }
+
+    private static string GenerateEnumJsonConverter(
+        Declaration declaration,
+        string fullType,
+        string converterName)
+    {
+        var builder = new StringBuilder();
+        builder.Append("internal sealed class ").Append(converterName)
+            .Append(" : global::System.Text.Json.Serialization.JsonConverter<").Append(fullType).AppendLine(">");
+        builder.AppendLine("{");
+        builder.Append("    public override ").Append(fullType)
+            .AppendLine(" Read(ref global::System.Text.Json.Utf8JsonReader reader, global::System.Type typeToConvert, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        if (declaration.IsStringEnum)
+        {
+            builder.AppendLine("        if (reader.TokenType == global::System.Text.Json.JsonTokenType.String)");
+            builder.AppendLine("        {");
+            builder.AppendLine("            var text = reader.GetString();");
+            foreach (var member in declaration.EnumMembers)
+            {
+                builder.Append("            if (text == ").Append(Quote(member.StringValue ?? member.Name)).Append(") return ")
+                    .Append(fullType).Append('.').Append(ToPascal(member.Name)).AppendLine(";");
+            }
+
+            builder.Append("            throw new global::System.Text.Json.JsonException(\"Unsupported value for ")
+                .Append(declaration.CSharpName)
+                .AppendLine(".\");");
+            builder.AppendLine("        }");
+        }
+
+        builder.AppendLine("        if (reader.TokenType == global::System.Text.Json.JsonTokenType.Number)");
+        builder.AppendLine("        {");
+        builder.Append("            return (").Append(fullType).AppendLine(")reader.GetInt32();");
+        builder.AppendLine("        }");
+        builder.AppendLine("        throw new global::System.Text.Json.JsonException(\"Expected a valid enum value.\");");
+        builder.AppendLine("    }");
+        builder.AppendLine();
+        builder.Append("    public override void Write(global::System.Text.Json.Utf8JsonWriter writer, ").Append(fullType)
+            .AppendLine(" value, global::System.Text.Json.JsonSerializerOptions options)");
+        builder.AppendLine("    {");
+        if (declaration.IsStringEnum)
+        {
+            foreach (var member in declaration.EnumMembers)
+            {
+                builder.Append("        if (value == ").Append(fullType).Append('.').Append(ToPascal(member.Name)).Append(") { writer.WriteStringValue(")
+                    .Append(Quote(member.StringValue ?? member.Name)).AppendLine("); return; }");
+            }
+        }
+
+        builder.AppendLine("        writer.WriteNumberValue((int)value);");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        return builder.ToString();
+    }
+
+    private static string ToJsonConverterName(Declaration declaration) =>
+        "AvaloniaReactJson" + Sanitize(declaration.NamespaceName + "_" + declaration.CSharpName) + "JsonConverter";
+
+    private static string Quote(string value) => "\"" + EscapeString(value) + "\"";
+
+    private static void AddJsonType(
+        HashSet<string> jsonTypes,
+        string type,
+        Dictionary<string, Declaration> byCSharp)
+    {
+        var trimmed = type.Trim();
+        if (trimmed.Length == 0 || trimmed is "void" or "Task" or "object" or "object?")
+        {
+            return;
+        }
+
+        if (trimmed.EndsWith("?", StringComparison.Ordinal))
+        {
+            var underlying = trimmed.Substring(0, trimmed.Length - 1);
+            AddJsonType(jsonTypes, underlying, byCSharp);
+            if (IsValueType(underlying, byCSharp))
+            {
+                jsonTypes.Add(trimmed);
+            }
+
+            return;
+        }
+
+        if (TryUnwrapMappedGeneric(trimmed, "IReadOnlyList", out var listElement))
+        {
+            jsonTypes.Add(trimmed);
+            AddJsonType(jsonTypes, listElement, byCSharp);
+            return;
+        }
+
+        if (TryUnwrapMappedGeneric(trimmed, "IReadOnlyDictionary", out var dictionaryArguments))
+        {
+            var arguments = SplitTopLevel(dictionaryArguments, ',').Select(item => item.Trim()).ToArray();
+            if (arguments.Length == 2)
+            {
+                jsonTypes.Add(trimmed);
+                AddJsonType(jsonTypes, arguments[1], byCSharp);
+                return;
+            }
+        }
+
+        if (string.Equals(trimmed, "string", StringComparison.Ordinal) ||
+            string.Equals(trimmed, "double", StringComparison.Ordinal) ||
+            string.Equals(trimmed, "bool", StringComparison.Ordinal) ||
+            string.Equals(trimmed, "global::System.DateTimeOffset", StringComparison.Ordinal) ||
+            string.Equals(trimmed, "global::System.Text.Json.JsonElement", StringComparison.Ordinal) ||
+            string.Equals(trimmed, "byte[]", StringComparison.Ordinal) ||
+            byCSharp.ContainsKey(trimmed))
+        {
+            jsonTypes.Add(trimmed);
+        }
+    }
+
+    private static bool IsValueType(string type, Dictionary<string, Declaration> byCSharp) =>
+        string.Equals(type, "double", StringComparison.Ordinal) ||
+        string.Equals(type, "bool", StringComparison.Ordinal) ||
+        string.Equals(type, "global::System.DateTimeOffset", StringComparison.Ordinal) ||
+        string.Equals(type, "global::System.Text.Json.JsonElement", StringComparison.Ordinal) ||
+        (byCSharp.TryGetValue(type, out var declaration) && declaration.Kind == DeclarationKind.Enum);
+
+    private static bool TryUnwrapMappedGeneric(string type, string name, out string inner)
+    {
+        inner = string.Empty;
+        var prefix = "global::System.Collections.Generic." + name + "<";
+        if (!type.StartsWith(prefix, StringComparison.Ordinal) ||
+            !type.EndsWith(">", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        inner = type.Substring(prefix.Length, type.Length - prefix.Length - 1);
+        return inner.Length > 0;
+    }
+
+    private static string? CreateJsonResolverEntry(
+        string type,
+        Dictionary<string, string> converters,
+        Dictionary<string, Declaration> byCSharp)
+    {
+        if (converters.TryGetValue(type, out var converterName))
+        {
+            return $"if (type == typeof({type})) return global::System.Text.Json.Serialization.Metadata.JsonMetadataServices.CreateValueInfo<{type}>(options, new {converterName}());";
+        }
+
+        var builtIn = type switch
+        {
+            "string" => "StringConverter",
+            "double" => "DoubleConverter",
+            "bool" => "BooleanConverter",
+            "global::System.DateTimeOffset" => "DateTimeOffsetConverter",
+            "byte[]" => "ByteArrayConverter",
+            "global::System.Text.Json.JsonElement" => "JsonElementConverter",
+            _ => null,
+        };
+        if (builtIn is not null)
+        {
+            return $"if (type == typeof({type})) return global::System.Text.Json.Serialization.Metadata.JsonMetadataServices.CreateValueInfo<{type}>(options, global::System.Text.Json.Serialization.Metadata.JsonMetadataServices.{builtIn});";
+        }
+
+        if (type.EndsWith("?", StringComparison.Ordinal))
+        {
+            var underlying = type.Substring(0, type.Length - 1);
+            if (IsValueType(underlying, byCSharp))
+            {
+                return $"if (type == typeof({type})) return global::System.Text.Json.Serialization.Metadata.JsonMetadataServices.CreateValueInfo<{type}>(options, global::System.Text.Json.Serialization.Metadata.JsonMetadataServices.GetNullableConverter<{underlying}>(options));";
+            }
+        }
+
+        if (TryUnwrapMappedGeneric(type, "IReadOnlyList", out var listElement))
+        {
+            return $"if (type == typeof({type})) return global::System.Text.Json.Serialization.Metadata.JsonMetadataServices.CreateValueInfo<{type}>(options, new global::AvaloniaWebview.React.Generated.ReactListConverter<{listElement}>());";
+        }
+
+        if (TryUnwrapMappedGeneric(type, "IReadOnlyDictionary", out var dictionaryArguments))
+        {
+            var arguments = SplitTopLevel(dictionaryArguments, ',').Select(item => item.Trim()).ToArray();
+            if (arguments.Length == 2 && string.Equals(arguments[0], "string", StringComparison.Ordinal))
+            {
+                return $"if (type == typeof({type})) return global::System.Text.Json.Serialization.Metadata.JsonMetadataServices.CreateValueInfo<{type}>(options, new global::AvaloniaWebview.React.Generated.ReactDictionaryConverter<{arguments[1]}>());";
+            }
+        }
+
+        return null;
+    }
+
     private static string? EmitDto(
         Declaration declaration,
         string namespaceName,
@@ -1274,6 +1794,10 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
         public string NamespaceName { get; } = namespaceName;
 
         public List<Declaration> Declarations { get; } = declarations;
+
+        public Dictionary<string, Declaration> LocalTypes { get; set; } = new(StringComparer.Ordinal);
+
+        public TypeMapper? Mapper { get; set; }
     }
 
     private sealed class Declaration(string typeScriptName, string namespaceName, Location location)

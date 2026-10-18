@@ -168,6 +168,7 @@ The reflection-based `RegisterApi<TApi>(implementation)` overload also exists, b
 - Property-only interfaces and object `export type` aliases generate partial C# DTO classes. Properties carry `[JsonPropertyName]`; optional properties become nullable.
 - `export enum` generates a C# enum. String enums use `JsonStringEnumConverter<T>` and `JsonStringEnumMemberName`; numeric enums keep explicit values.
 - DTOs and enums declared in other `.d.ts` files are resolved by unique name across namespaces. Ambiguous names fall back to `JsonElement` (`AVR0002`).
+- Generated JSON converters and a type-info resolver are installed automatically, so generated DTOs, enums, lists, dictionaries, and nullable values work under trimming/AOT without a handwritten `JsonSerializerContext`.
 - Interfaces with only properties become DTOs; interfaces with methods become API contracts. Do not mix methods and properties in one interface — properties on an API contract are ignored with `AVR0001`.
 - Generic interfaces are skipped (`AVR0003`); unsupported enums are skipped (`AVR0004`); unsupported members report `AVR0001`.
 
@@ -288,13 +289,14 @@ The host window's asset-server subscription follows the control. Do not create a
 
 Use the generated `HostApiBridge.Register` helper, not the reflection overload.
 
-Primitive and `JsonElement` arguments/results and host messages are written without reflection. DTOs, enums, collections, and custom message payloads — including `InvokeReactAsync` payloads/results — need source-generated JSON metadata. For trimmed/AOT apps, define a context covering every root payload type and install it before the WebView is created:
+Primitive and `JsonElement` arguments/results and host messages are written without reflection. The generator also emits converters and an `AvaloniaReactGeneratedTypeInfoResolver` for generated DTOs, enums, lists, dictionaries, and nullable values, and installs it through `ReactJsonSerializerDefaults` with a module initializer. Trimmed/AOT apps therefore need no JSON setup for generated `.d.ts` contracts.
+
+For custom payload types outside generated contracts, define a source-generated context and install it before the WebView is created:
 
 ```csharp
 using System.Text.Json.Serialization;
 
-[JsonSerializable(typeof(UserProfile))]
-[JsonSerializable(typeof(IReadOnlyList<UserProfile>))]
+[JsonSerializable(typeof(MyMessagePayload))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
 }
@@ -304,7 +306,7 @@ ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
 // reactHost.BridgeJsonSerializerOptions = AppJsonContext.Default.Options;
 ```
 
-Symptoms of missing metadata after trimming: reflection-based serialization is disabled, or an API call fails while the same call works untrimmed. Add the missing root type to the context; do not switch back to reflection.
+Assigning `Options` keeps the generated resolver as a fallback, so generated and custom payloads coexist. Symptoms of missing metadata after trimming: reflection-based serialization is disabled, or an API call fails while the same call works untrimmed. Add the missing custom root type to the context; generated DTO/enum/collection contracts are already covered.
 
 ## Debugging playbook
 
@@ -319,7 +321,7 @@ Start with `references/troubleshooting.md` for commands and exact checks. Quick 
 | Host API rejected with origin error | `TrustedApiOrigins`; `AllowedOrigins` only covers navigation. |
 | XAML cannot find `ReactHostView` | Use `xmlns:react="using:AvaloniaWebview.React"` and `react:ReactHostView`. |
 | Windows host window is blank | Missing Windows 10/11 compatibility manifest. |
-| Trimmed app cannot call a DTO API | Missing `JsonSerializerContext` for the DTO/collection. |
+| Trimmed app cannot call a generated DTO API | Update to the current generator; if the payload type is outside generated contracts, add it to a `JsonSerializerContext`. |
 | Navigation leaves the app | `ExternalNavigationPolicy`, `AllowedOrigins`, and the non-HTTP navigation rule. |
 | Page state lost after moving a tab | Use a `ReactHostView` in that window; it preserves the WebView by default. |
 

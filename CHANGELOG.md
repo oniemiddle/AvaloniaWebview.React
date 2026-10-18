@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Host-to-React request/response calls: `registerReactHandler`/`useReactHandler` on the client and
   `InvokeReactAsync`/`InvokeReactAsync<T>` on the host, with timeout, cancellation, errors, and the
   `ReactInvokeTimeout` setting.
+- Zero-config trimmed/AOT JSON support: the source generator emits converters and a type-info
+  resolver for generated DTOs, enums, lists, dictionaries, and nullable values, and installs it
+  through `ReactJsonSerializerDefaults` at assembly load.
 
 ## [0.17.0] - 2026-10-18
 

@@ -108,6 +108,18 @@ Direct use gives the raw `NativeWebView` surface. Differences from `ReactHostVie
 - `MaxQueuedBridgeMessages` (default 1024), `MaxIncomingMessageCharacters`, `ApiInvokeTimeout`, `BridgeJsonSerializerOptions`, and `PreserveWebViewOnDetach`/`ReparentingTimeout` are configured here directly when not forwarded by `ReactHostView`.
 - Inherited native capabilities include `UserAgent`, `AdapterInfo`, `CanGoBack`, `CanGoForward`, `GoBack`, `GoForward`, `Stop`, `Navigate`, `ShowPrintUI`, `PrintToPdfStreamAsync`, `TryGetCookieManager`, `TryGetCommandManager`, `BeginReparenting`, and `BeginReparentingAsync`.
 
+## JSON defaults
+
+```csharp
+public static class ReactJsonSerializerDefaults
+{
+    public static JsonSerializerOptions Options { get; set; }
+    public static void AddTypeInfoResolver(IJsonTypeInfoResolver resolver);
+}
+```
+
+`Options` is non-null and uses web defaults. Generated JSON support registers its resolver with `AddTypeInfoResolver` from a module initializer; assigning `Options` combines the generated resolver as a fallback. Use a custom context for payload types outside generated contracts; a view-level `BridgeJsonSerializerOptions` can be constructed from `ReactJsonSerializerDefaults.Options` to keep that fallback.
+
 ## Client (`@avalonia-react/bridge`)
 
 ```ts
@@ -261,4 +273,5 @@ Useful MSBuild properties:
 - Non-HTTP navigation is always blocked; only HTTP(S) and `about:blank` are allowed.
 - Oversized incoming messages are dropped and reported through `SecurityViolation`.
 - Generated registration avoids `MethodInfo` reflection; primitive payloads avoid JSON reflection.
-- For DTO/enum/collection payloads under trimming/AOT, install a source-generated `JsonSerializerContext` through `ReactJsonSerializerDefaults.Options` or `BridgeJsonSerializerOptions`.
+- The generator installs a type-info resolver for generated DTOs, enums, lists, dictionaries, and nullable values; no handwritten context is needed for generated contracts.
+- For custom payload types outside generated contracts, install a source-generated `JsonSerializerContext` through `ReactJsonSerializerDefaults.Options` or `BridgeJsonSerializerOptions`.

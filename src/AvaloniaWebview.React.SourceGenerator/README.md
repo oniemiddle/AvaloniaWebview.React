@@ -64,6 +64,8 @@ public partial interface IHostApi
 
 String enums use `JsonStringEnumConverter<T>` and `JsonStringEnumMemberName`; numeric enums keep explicit numeric values. Interfaces declared with `extends` become class inheritance for DTOs. Generated DTOs and enums declared in other `.d.ts` files are resolved by unique name across namespaces; ambiguous names fall back to `JsonElement` with `AVR0002`.
 
+The generator also emits a self-contained `AvaloniaReactGeneratedTypeInfoResolver` with converters for DTOs, string/numeric enums, lists, dictionaries, and nullable values. A module initializer registers it with `ReactJsonSerializerDefaults`, so trimmed/Native AOT apps can serialize generated DTO/enum/collection contracts without a handwritten `JsonSerializerContext` or reflection.
+
 Generated interfaces are `partial` and annotated with `[ReactApiContract]` and `[ReactApiMethod]`, so the bridge uses the TypeScript names rather than deriving them from C# identifiers. Multiple interfaces with the same name in different `.d.ts` files no longer collide.
 
 ### Reflection-free registration
@@ -74,10 +76,12 @@ Each API contract also generates a `{TypeScriptName}Bridge` static class. Regist
 HostApiBridge.Register(webView, new HostApi());
 ```
 
-The helper includes methods inherited from base API interfaces and passes the cancellation token when it is enabled. Primitive arguments are read directly from the bridge's `JsonElement` arguments; DTO, enum, and collection arguments use `context.JsonSerializerOptions`. For trimmed/Native AOT applications, assign a source-generated `JsonSerializerContext`:
+The helper includes methods inherited from base API interfaces and passes the cancellation token when it is enabled. Primitive arguments are read directly from the bridge's `JsonElement` arguments; DTO, enum, and collection arguments use `context.JsonSerializerOptions`. Generated JSON support covers generated contracts automatically.
+
+For custom payload types outside generated `.d.ts` contracts, assign a source-generated `JsonSerializerContext`:
 
 ```csharp
-[JsonSerializable(typeof(UserProfile))]
+[JsonSerializable(typeof(CustomMessage))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
 }
@@ -85,7 +89,7 @@ internal partial class AppJsonContext : JsonSerializerContext
 ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
 ```
 
-The reflection-based `RegisterApi<TApi>` overload remains available and is annotated for trimming/AOT analyzers.
+Assigning `Options` keeps the generated resolver as a fallback. The reflection-based `RegisterApi<TApi>` overload remains available and is annotated for trimming/AOT analyzers.
 
 ### Cancellation tokens
 

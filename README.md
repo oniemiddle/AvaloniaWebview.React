@@ -421,11 +421,12 @@ The library is marked `IsTrimmable` and `IsAotCompatible`; its trim and AOT anal
 HostApiBridge.Register(webView, new HostApi());
 ```
 
-Generated handlers read `string`, `number`, `boolean`, `DateTimeOffset`, `byte[]`, and `JsonElement` arguments directly from `JsonElement`, and the bridge writes primitive/`JsonElement` results without reflection. DTOs, enums, collections, custom message payloads, and `InvokeReactAsync` payloads/results still need JSON metadata. For trimmed/Native AOT applications, define a source-generated context covering those types and install it before creating the WebView:
+Generated handlers read `string`, `number`, `boolean`, `DateTimeOffset`, `byte[]`, and `JsonElement` arguments directly from `JsonElement`, and the bridge writes primitive/`JsonElement` results without reflection. The generator also emits converters and a type-info resolver for generated DTOs, enums, lists, dictionaries, nullable values, and the types used by generated contracts. A module initializer installs that resolver into `ReactJsonSerializerDefaults.Options`, so most trimmed/Native AOT apps need no JSON setup at all.
+
+For custom payload types that are not declared in a generated `.d.ts` contract (for example an arbitrary `PostMessageAsync<T>` or `InvokeReactAsync<T>` type), provide a source-generated context:
 
 ```csharp
-[JsonSerializable(typeof(UserProfile))]
-[JsonSerializable(typeof(IReadOnlyList<UserProfile>))]
+[JsonSerializable(typeof(CustomMessage))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
 }
@@ -434,7 +435,7 @@ ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
 // Or per view: webView.BridgeJsonSerializerOptions = AppJsonContext.Default.Options;
 ```
 
-The source generator cannot emit a `JsonSerializerContext` automatically because System.Text.Json's generator does not see other generators' output. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's generated registration and primitive API were verified with `PublishTrimmed=true`.
+Setting `ReactJsonSerializerDefaults.Options` keeps the generated resolver as a fallback, so generated DTO/enum contracts and custom context types can coexist. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's primitive API and a generated DTO/enum/list contract were verified with `PublishTrimmed=true` and reflection-based serialization disabled.
 
 ## Platform notes
 
