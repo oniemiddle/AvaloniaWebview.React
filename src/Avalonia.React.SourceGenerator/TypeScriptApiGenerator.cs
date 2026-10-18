@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -8,116 +10,692 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace Avalonia.React.SourceGenerator;
 
+/// <summary>
+/// Generates C# API interfaces from exported TypeScript interfaces in <c>.d.ts</c> files.
+/// </summary>
 [Generator]
 public sealed class TypeScriptApiGenerator : IIncrementalGenerator
 {
-    private static readonly Regex InterfacePattern = new Regex(
-        @"export\s+interface\s+(?<name>[A-Za-z_$][\w$]*)\s*\{(?<body>[\s\S]*?)\}", RegexOptions.Compiled);
-    private static readonly Regex MethodPattern = new Regex(
-        @"^\s*(?<name>[A-Za-z_$][\w$]*)\s*\((?<args>[^)]*)\)\s*:\s*(?<result>[^;]+);?\s*$", RegexOptions.Compiled);
+    private static readonly Regex NamespacePattern = new(
+        @"//\s*@namespace\s+(?<name>[A-Za-z_][\w.]*)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex InterfacePattern = new(
+        @"\bexport\s+interface\s+(?<name>[A-Za-z_$][\w$]*)(?<generics>\s*<[^>{}]*>)?(?:\s+extends\s+(?<bases>[^{]+?))?\s*\{",
+        RegexOptions.Compiled);
+
+    private static readonly Regex MethodPattern = new(
+        @"^\s*(?<name>[A-Za-z_$][\w$]*)\s*(?<optional>\?)?\s*\((?<args>.*)\)\s*:\s*(?<result>.+?)\s*;?\s*$",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private static readonly Regex ParameterPattern = new(
+        @"^\s*(?<rest>\.\.\.)?(?<name>[A-Za-z_$][\w$]*)\s*(?<optional>\?)?\s*:\s*(?<type>.+?)\s*$",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private static readonly DiagnosticDescriptor UnsupportedMember = new(
+        id: "AVR0001",
+        title: "Unsupported TypeScript member",
+        messageFormat: "The member '{0}' on interface '{1}' is not supported and was skipped",
+        category: "Avalonia.React",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor TypeFallback = new(
+        id: "AVR0002",
+        title: "TypeScript type mapped to JsonElement",
+        messageFormat: "The TypeScript type '{0}' is not supported and maps to System.Text.Json.JsonElement",
+        category: "Avalonia.React",
+        defaultSeverity: DiagnosticSeverity.Info,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor GenericInterface = new(
+        id: "AVR0003",
+        title: "Generic TypeScript interface skipped",
+        messageFormat: "The interface '{0}' declares type parameters, which are not supported",
+        category: "Avalonia.React",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)
+    {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked",
+        "class", "const", "continue", "decimal", "default", "delegate", "do", "double", "else",
+        "enum", "event", "explicit", "extern", "false", "finally", "fixed", "float", "for",
+        "foreach", "goto", "if", "implicit", "in", "int", "interface", "internal", "is", "lock",
+        "long", "namespace", "new", "null", "object", "operator", "out", "override", "params",
+        "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
+        "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
+        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual",
+        "void", "volatile", "while",
+    };
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var declarations = context.AdditionalTextsProvider
             .Where(file => file.Path.EndsWith(".d.ts", StringComparison.OrdinalIgnoreCase))
-            .Select((file, cancellationToken) => file.GetText(cancellationToken)?.ToString() ?? string.Empty);
-        context.RegisterSourceOutput(declarations, Generate);
+            .Select((file, cancellationToken) => new DeclarationFile(file.Path, file.GetText(cancellationToken)?.ToString() ?? string.Empty))
+            .Collect();
+
+        context.RegisterSourceOutput(declarations, static (productionContext, files) => Generate(productionContext, files));
     }
 
-    private static void Generate(SourceProductionContext context, string source)
+    private static void Generate(SourceProductionContext context, ImmutableArray<DeclarationFile> files)
     {
-        if (!string.IsNullOrWhiteSpace(source))
+        var fileIndex = 0;
+        foreach (var file in files)
         {
-            var namespaceMatch = Regex.Match(source, @"//\s*@namespace\s+(?<name>[A-Za-z_][\w.]*)");
-            var ns = namespaceMatch.Success ? namespaceMatch.Groups["name"].Value : "Avalonia.React.Generated";
-            foreach (Match contract in InterfacePattern.Matches(source))
+            if (string.IsNullOrWhiteSpace(file.Text))
             {
-                var name = contract.Groups["name"].Value;
-                var interfaceName = name.StartsWith("I", StringComparison.Ordinal) ? name : "I" + name;
-                var methods = ParseMethods(contract.Groups["body"].Value);
-                var output = new StringBuilder();
-                output.AppendLine("// <auto-generated />");
-                output.AppendLine("#nullable enable");
-                output.AppendLine("using System.Threading.Tasks;");
-                output.Append("namespace ").Append(ns).AppendLine(";");
-                output.Append("public interface ").Append(interfaceName).AppendLine();
-                output.AppendLine("{");
-                foreach (var method in methods)
+                fileIndex++;
+                continue;
+            }
+
+            var namespaceName = ParseNamespace(file.Text) ?? "Avalonia.React.Generated";
+            var text = RemoveComments(file.Text);
+            var interfaceIndex = 0;
+            foreach (var declaration in ParseInterfaces(context, file, text))
+            {
+                var source = Emit(declaration, namespaceName);
+                var hintName = $"{Sanitize(FileName(file.Path))}.{Sanitize(declaration.InterfaceName)}.{fileIndex}.{interfaceIndex}.g.cs";
+                context.AddSource(hintName, SourceText.From(source, Encoding.UTF8));
+                interfaceIndex++;
+            }
+
+            fileIndex++;
+        }
+    }
+
+    private static IEnumerable<InterfaceDeclaration> ParseInterfaces(SourceProductionContext context, DeclarationFile file, string text)
+    {
+        foreach (Match match in InterfacePattern.Matches(text))
+        {
+            var name = match.Groups["name"].Value;
+            var location = CreateLocation(file.Path, match.Index);
+            if (match.Groups["generics"].Success && match.Groups["generics"].Value.Length > 0)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(GenericInterface, location, name));
+                continue;
+            }
+
+            var openBrace = match.Index + match.Length - 1;
+            var closeBrace = FindClosingBrace(text, openBrace);
+            if (closeBrace < 0)
+            {
+                continue;
+            }
+
+            var declaration = new InterfaceDeclaration(name);
+            foreach (var baseName in SplitTopLevel(match.Groups["bases"].Value, ','))
+            {
+                var trimmed = baseName.Trim();
+                if (trimmed.Length == 0)
                 {
-                    var csharpName = ToPascal(method.Name);
-                    var result = MapReturnType(method.Result, out var isAsync);
-                    if (isAsync && !csharpName.EndsWith("Async", StringComparison.Ordinal)) csharpName += "Async";
-                    var parameters = string.Join(", ", method.Arguments.Select(a => MapParameter(a)));
-                    output.Append("    ").Append(result).Append(' ').Append(csharpName).Append('(').Append(parameters).AppendLine(");");
+                    continue;
                 }
-                output.AppendLine("}");
-                context.AddSource(Sanitize(interfaceName) + ".g.cs", SourceText.From(output.ToString(), Encoding.UTF8));
+
+                if (!Regex.IsMatch(trimmed, @"^[A-Za-z_$][\w$]*$"))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        UnsupportedMember, location, "extends " + trimmed, name));
+                    continue;
+                }
+
+                declaration.BaseNames.Add(ToInterfaceName(trimmed));
+            }
+
+            var body = NormalizeMemberSeparators(text.Substring(openBrace + 1, closeBrace - openBrace - 1));
+            var mapper = new TypeMapper(fallback => context.ReportDiagnostic(Diagnostic.Create(TypeFallback, location, fallback)));
+            foreach (var member in SplitMembers(body))
+            {
+                var trimmed = member.Trim();
+                if (trimmed.Length == 0)
+                {
+                    continue;
+                }
+
+                var methodMatch = MethodPattern.Match(trimmed);
+                if (!methodMatch.Success)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(UnsupportedMember, location, Summarize(trimmed), name));
+                    continue;
+                }
+
+                var method = new MethodDeclaration(methodMatch.Groups["name"].Value);
+                var returnType = methodMatch.Groups["result"].Value.Trim();
+                method.ReturnType = MapReturnType(returnType, mapper, out var isAsync);
+                method.IsAsync = isAsync;
+
+                var argumentList = methodMatch.Groups["args"].Value;
+                var valid = true;
+                foreach (var argument in SplitTopLevel(argumentList, ','))
+                {
+                    var argumentText = argument.Trim();
+                    if (argumentText.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    if (argumentText.StartsWith("this:", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var parameterMatch = ParameterPattern.Match(argumentText);
+                    if (!parameterMatch.Success)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(UnsupportedMember, location, Summarize(argumentText), name));
+                        valid = false;
+                        break;
+                    }
+
+                    var parameterType = mapper.Map(parameterMatch.Groups["type"].Value);
+                    var optional = parameterMatch.Groups["optional"].Success;
+                    if (optional || parameterMatch.Groups["rest"].Success)
+                    {
+                        parameterType = MakeNullable(parameterType);
+                    }
+
+                    method.Parameters.Add(new ParameterDeclaration(
+                        Identifier(parameterMatch.Groups["name"].Value),
+                        parameterType,
+                        optional));
+                }
+
+                if (valid)
+                {
+                    declaration.Methods.Add(method);
+                }
+            }
+
+            yield return declaration;
+        }
+    }
+
+    private static string Emit(InterfaceDeclaration declaration, string namespaceName)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("// <auto-generated />");
+        builder.AppendLine("#nullable enable");
+        builder.AppendLine("using System.Threading.Tasks;");
+        builder.Append("namespace ").Append(namespaceName).AppendLine(";");
+        builder.AppendLine();
+        builder.Append("[global::Avalonia.React.ReactApiContractAttribute(\"")
+            .Append(EscapeString(declaration.TypeScriptName))
+            .AppendLine("\")]");
+        builder.Append("public partial interface ").Append(declaration.InterfaceName);
+        if (declaration.BaseNames.Count > 0)
+        {
+            builder.Append(" : ").Append(string.Join(", ", declaration.BaseNames));
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("{");
+        foreach (var method in declaration.Methods)
+        {
+            var methodName = ToPascal(method.Name);
+            if (method.IsAsync && !methodName.EndsWith("Async", StringComparison.Ordinal))
+            {
+                methodName += "Async";
+            }
+
+            builder.Append("    [global::Avalonia.React.ReactApiMethodAttribute(\"")
+                .Append(EscapeString(method.Name))
+                .AppendLine("\")]");
+            builder.Append("    ").Append(method.ReturnType).Append(' ').Append(methodName).Append('(');
+            builder.Append(string.Join(", ", method.Parameters.Select(parameter =>
+                parameter.Optional
+                    ? parameter.Type + " " + parameter.Name + " = default"
+                    : parameter.Type + " " + parameter.Name)));
+            builder.AppendLine(");");
+        }
+
+        builder.AppendLine("}");
+        return builder.ToString();
+    }
+
+    private static string MapReturnType(string typeScriptType, TypeMapper mapper, out bool isAsync)
+    {
+        var trimmed = typeScriptType.Trim();
+        if (TryUnwrapGeneric(trimmed, "Promise", out var inner) ||
+            TryUnwrapGeneric(trimmed, "PromiseLike", out inner))
+        {
+            isAsync = true;
+            var mapped = mapper.Map(inner);
+            return mapped == "void" ? "Task" : "Task<" + mapped + ">";
+        }
+
+        isAsync = false;
+        var result = mapper.Map(trimmed);
+        return result == "void" ? "Task" : "Task<" + result + ">";
+    }
+
+    private static string NormalizeMemberSeparators(string body)
+    {
+        var builder = new StringBuilder(body.Length);
+        var parentheses = 0;
+        var braces = 0;
+        var angles = 0;
+        var brackets = 0;
+
+        for (var index = 0; index < body.Length; index++)
+        {
+            var character = body[index];
+            if (character == '\n' &&
+                parentheses == 0 &&
+                braces == 0 &&
+                angles == 0 &&
+                brackets == 0 &&
+                StartsMember(body, index + 1))
+            {
+                builder.Append(';');
+                continue;
+            }
+
+            builder.Append(character);
+            switch (character)
+            {
+                case '(': parentheses++; break;
+                case ')': parentheses = Math.Max(0, parentheses - 1); break;
+                case '{': braces++; break;
+                case '}': braces = Math.Max(0, braces - 1); break;
+                case '<': angles++; break;
+                case '>': angles = Math.Max(0, angles - 1); break;
+                case '[': brackets++; break;
+                case ']': brackets = Math.Max(0, brackets - 1); break;
             }
         }
+
+        return builder.ToString();
     }
 
-    private static IReadOnlyList<TsMethod> ParseMethods(string body)
+    private static bool StartsMember(string body, int index)
     {
-        var methods = new List<TsMethod>();
-        foreach (var line in body.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        while (index < body.Length && char.IsWhiteSpace(body[index]))
         {
-            var match = MethodPattern.Match(line);
-            if (!match.Success) continue;
-            var arguments = match.Groups["args"].Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(value => value.Trim()).Where(value => value.Length > 0).ToArray();
-            methods.Add(new TsMethod(match.Groups["name"].Value, arguments, match.Groups["result"].Value.Trim()));
+            index++;
         }
-        return methods;
-    }
 
-    private static string MapParameter(string argument)
-    {
-        var separator = argument.IndexOf(':');
-        if (separator < 0) return "global::System.Text.Json.JsonElement " + Sanitize(argument.TrimEnd('?'));
-        var name = argument.Substring(0, separator).Trim().TrimEnd('?');
-        var optional = argument.Substring(0, separator).Trim().EndsWith("?", StringComparison.Ordinal);
-        var type = MapType(argument.Substring(separator + 1).Trim());
-        if (optional && type != "string" && type != "object") type += "?";
-        return type + " " + Sanitize(name);
-    }
-
-    private static string MapReturnType(string source, out bool isAsync)
-    {
-        var match = Regex.Match(source, @"^(?:Promise|PromiseLike)\s*<\s*(?<inner>.+)\s*>$");
-        isAsync = match.Success;
-        if (isAsync)
+        if (index >= body.Length || !(char.IsLetter(body[index]) || body[index] is '_' or '$'))
         {
-            var inner = MapType(match.Groups["inner"].Value.Trim());
-            return inner == "void" ? "Task" : "Task<" + inner + ">";
+            return false;
         }
-        var type = MapType(source);
-        return type == "void" ? "Task" : "Task<" + type + ">";
-    }
 
-    private static string MapType(string source)
-    {
-        source = source.Trim();
-        if (source.EndsWith("[]", StringComparison.Ordinal)) return "global::System.Collections.Generic.IReadOnlyList<" + MapType(source.Substring(0, source.Length - 2)) + ">";
-        switch (source)
+        while (index < body.Length && (char.IsLetterOrDigit(body[index]) || body[index] is '_' or '$'))
         {
-            case "string": return "string";
-            case "number": return "double";
-            case "boolean": return "bool";
-            case "void": return "void";
-            case "object": return "object";
-            case "unknown":
-            case "any": return "global::System.Text.Json.JsonElement";
-            default: return "global::System.Text.Json.JsonElement";
+            index++;
+        }
+
+        while (index < body.Length && char.IsWhiteSpace(body[index]))
+        {
+            index++;
+        }
+
+        return index < body.Length && (body[index] == '(' || body[index] == '?');
+    }
+
+    private static IEnumerable<string> SplitMembers(string body)
+    {
+        var start = 0;
+        var parentheses = 0;
+        var braces = 0;
+        var angles = 0;
+        var brackets = 0;
+
+        for (var index = 0; index < body.Length; index++)
+        {
+            var character = body[index];
+            switch (character)
+            {
+                case '(': parentheses++; break;
+                case ')': parentheses = Math.Max(0, parentheses - 1); break;
+                case '{': braces++; break;
+                case '}': braces = Math.Max(0, braces - 1); break;
+                case '<': angles++; break;
+                case '>': angles = Math.Max(0, angles - 1); break;
+                case '[': brackets++; break;
+                case ']': brackets = Math.Max(0, brackets - 1); break;
+                case ';':
+                    if (parentheses == 0 && braces == 0 && angles == 0 && brackets == 0)
+                    {
+                        yield return body.Substring(start, index - start);
+                        start = index + 1;
+                    }
+                    break;
+            }
+        }
+
+        if (start < body.Length)
+        {
+            yield return body.Substring(start);
         }
     }
 
-    private static string ToPascal(string name) => char.ToUpperInvariant(name[0]) + name.Substring(1);
+    private static IEnumerable<string> SplitTopLevel(string value, char separator)
+    {
+        var start = 0;
+        var parentheses = 0;
+        var braces = 0;
+        var angles = 0;
+        var brackets = 0;
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            switch (character)
+            {
+                case '(': parentheses++; break;
+                case ')': parentheses = Math.Max(0, parentheses - 1); break;
+                case '{': braces++; break;
+                case '}': braces = Math.Max(0, braces - 1); break;
+                case '<': angles++; break;
+                case '>': angles = Math.Max(0, angles - 1); break;
+                case '[': brackets++; break;
+                case ']': brackets = Math.Max(0, brackets - 1); break;
+                default:
+                    if (character == separator && parentheses == 0 && braces == 0 && angles == 0 && brackets == 0)
+                    {
+                        yield return value.Substring(start, index - start);
+                        start = index + 1;
+                    }
+                    break;
+            }
+        }
+
+        yield return value.Substring(start);
+    }
+
+    private static int FindClosingBrace(string text, int openBrace)
+    {
+        var depth = 0;
+        for (var index = openBrace; index < text.Length; index++)
+        {
+            if (text[index] == '{')
+            {
+                depth++;
+            }
+            else if (text[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return index;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private static string? ParseNamespace(string text)
+    {
+        var match = NamespacePattern.Match(text);
+        return match.Success ? match.Groups["name"].Value : null;
+    }
+
+    private static string RemoveComments(string text)
+    {
+        text = Regex.Replace(text, @"/\*[\s\S]*?\*/", string.Empty);
+        return Regex.Replace(text, @"//[^\r\n]*", string.Empty);
+    }
+
+    private static string ToInterfaceName(string name)
+    {
+        var identifier = Identifier(name);
+        return identifier.StartsWith("I", StringComparison.Ordinal) ? identifier : "I" + identifier;
+    }
+
+    private static string ToPascal(string name)
+    {
+        var identifier = Identifier(name);
+        if (identifier.StartsWith("@", StringComparison.Ordinal))
+        {
+            identifier = identifier.Substring(1);
+        }
+
+        identifier = char.ToUpperInvariant(identifier[0]) + identifier.Substring(1);
+        return Keywords.Contains(identifier) ? "@" + identifier : identifier;
+    }
+
+    private static string Identifier(string name)
+    {
+        var cleaned = Regex.Replace(name, @"[^A-Za-z0-9_]", "_");
+        if (cleaned.Length == 0 || char.IsDigit(cleaned[0]))
+        {
+            cleaned = "_" + cleaned;
+        }
+
+        return Keywords.Contains(cleaned) ? "@" + cleaned : cleaned;
+    }
+
+    private static string MakeNullable(string type) => type.EndsWith("?", StringComparison.Ordinal) ? type : type + "?";
+
+    private static string EscapeString(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
     private static string Sanitize(string value) => Regex.Replace(value, @"[^A-Za-z0-9_]", "_");
-    private sealed class TsMethod
+
+    private static string Summarize(string value)
     {
-        public TsMethod(string name, string[] arguments, string result) { Name = name; Arguments = arguments; Result = result; }
+        var collapsed = Regex.Replace(value, @"\s+", " ").Trim();
+        return collapsed.Length <= 80 ? collapsed : collapsed.Substring(0, 77) + "...";
+    }
+
+    private static string FileName(string path)
+    {
+        var separator = path.LastIndexOfAny(new[] { '/', '\\' });
+        var name = separator >= 0 ? path.Substring(separator + 1) : path;
+        var dot = name.LastIndexOf('.');
+        return dot > 0 ? name.Substring(0, dot) : name;
+    }
+
+    private static Location CreateLocation(string path, int position) =>
+        Location.Create(path, new TextSpan(position, 0), new LinePositionSpan(new LinePosition(0, 0), new LinePosition(0, 0)));
+
+    private static bool TryUnwrapGeneric(string type, string name, out string inner)
+    {
+        inner = string.Empty;
+        if (!type.StartsWith(name, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var rest = type.Substring(name.Length).Trim();
+        if (rest.Length < 2 || rest[0] != '<' || rest[rest.Length - 1] != '>')
+        {
+            return false;
+        }
+
+        inner = rest.Substring(1, rest.Length - 2).Trim();
+        return inner.Length > 0;
+    }
+
+    private sealed class DeclarationFile
+    {
+        public DeclarationFile(string path, string text)
+        {
+            Path = path;
+            Text = text;
+        }
+
+        public string Path { get; }
+
+        public string Text { get; }
+    }
+
+    private sealed class InterfaceDeclaration
+    {
+        public InterfaceDeclaration(string name)
+        {
+            TypeScriptName = name;
+            InterfaceName = ToInterfaceName(name);
+        }
+
+        public string TypeScriptName { get; }
+
+        public string InterfaceName { get; }
+
+        public List<string> BaseNames { get; } = new();
+
+        public List<MethodDeclaration> Methods { get; } = new();
+    }
+
+    private sealed class MethodDeclaration
+    {
+        public MethodDeclaration(string name)
+        {
+            Name = name;
+        }
+
         public string Name { get; }
-        public string[] Arguments { get; }
-        public string Result { get; }
+
+        public string ReturnType { get; set; } = "Task";
+
+        public bool IsAsync { get; set; }
+
+        public List<ParameterDeclaration> Parameters { get; } = new();
+    }
+
+    private sealed class ParameterDeclaration
+    {
+        public ParameterDeclaration(string name, string type, bool optional)
+        {
+            Name = name;
+            Type = type;
+            Optional = optional;
+        }
+
+        public string Name { get; }
+
+        public string Type { get; }
+
+        public bool Optional { get; }
+    }
+
+    private sealed class TypeMapper
+    {
+        private readonly Action<string> _fallback;
+
+        public TypeMapper(Action<string> fallback)
+        {
+            _fallback = fallback;
+        }
+
+        public string Map(string typeScriptType)
+        {
+            var trimmed = typeScriptType.Trim();
+            if (trimmed.Length == 0)
+            {
+                return "global::System.Text.Json.JsonElement";
+            }
+
+            var parts = SplitTopLevel(trimmed, '|').Select(part => part.Trim()).Where(part => part.Length > 0).ToArray();
+            var nullable = parts.Any(part => part is "null" or "undefined");
+            var types = parts.Where(part => part is not "null" and not "undefined").ToArray();
+            if (types.Length == 0)
+            {
+                return "object?";
+            }
+
+            string mapped;
+            if (types.Length == 1)
+            {
+                mapped = MapSingle(types[0]);
+            }
+            else if (types.All(IsStringLiteral))
+            {
+                mapped = "string";
+            }
+            else if (types.All(IsBooleanLiteral))
+            {
+                mapped = "bool";
+            }
+            else if (types.All(IsNumberLiteral))
+            {
+                mapped = "double";
+            }
+            else
+            {
+                _fallback(trimmed);
+                mapped = "global::System.Text.Json.JsonElement";
+            }
+
+            return nullable ? MakeNullable(mapped) : mapped;
+        }
+
+        private string MapSingle(string type)
+        {
+            var trimmed = type.Trim();
+            if (trimmed.EndsWith("?", StringComparison.Ordinal))
+            {
+                return MakeNullable(MapSingle(trimmed.Substring(0, trimmed.Length - 1)));
+            }
+
+            if (IsStringLiteral(trimmed))
+            {
+                return "string";
+            }
+
+            if (IsNumberLiteral(trimmed))
+            {
+                return "double";
+            }
+
+            if (IsBooleanLiteral(trimmed))
+            {
+                return "bool";
+            }
+
+            switch (trimmed)
+            {
+                case "string": return "string";
+                case "number": return "double";
+                case "boolean": return "bool";
+                case "void": return "void";
+                case "object": return "object";
+                case "unknown":
+                case "any": return "global::System.Text.Json.JsonElement";
+                case "null":
+                case "undefined": return "object?";
+                case "Date": return "global::System.DateTimeOffset";
+                case "ArrayBuffer": return "byte[]";
+                case "Uint8Array": return "byte[]";
+            }
+
+            if (TryUnwrapGeneric(trimmed, "ReadonlyArray", out var readonlyArray) ||
+                TryUnwrapGeneric(trimmed, "ReadOnlyArray", out readonlyArray) ||
+                TryUnwrapGeneric(trimmed, "Array", out readonlyArray))
+            {
+                return "global::System.Collections.Generic.IReadOnlyList<" + Map(readonlyArray) + ">";
+            }
+
+            if (TryUnwrapGeneric(trimmed, "Record", out var record))
+            {
+                var recordArguments = SplitTopLevel(record, ',').Select(argument => argument.Trim()).ToArray();
+                if (recordArguments.Length == 2 && recordArguments[0] is "string" or "number")
+                {
+                    return "global::System.Collections.Generic.IReadOnlyDictionary<string, " + Map(recordArguments[1]) + ">";
+                }
+
+                _fallback(trimmed);
+                return "global::System.Text.Json.JsonElement";
+            }
+
+            if (trimmed.EndsWith("[]", StringComparison.Ordinal))
+            {
+                return "global::System.Collections.Generic.IReadOnlyList<" + Map(trimmed.Substring(0, trimmed.Length - 2)) + ">";
+            }
+
+            _fallback(trimmed);
+            return "global::System.Text.Json.JsonElement";
+        }
+
+        private static bool IsStringLiteral(string value) =>
+            value.Length >= 2 &&
+            ((value[0] == '"' && value[value.Length - 1] == '"') ||
+             (value[0] == '\'' && value[value.Length - 1] == '\''));
+
+        private static bool IsBooleanLiteral(string value) => value is "true" or "false";
+
+        private static bool IsNumberLiteral(string value) =>
+            double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
     }
 }

@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-18
+
+### Added
+
+- The source generator now parses multi-line method signatures, members separated only by newlines,
+  interface inheritance (`extends`),
+  string/number/boolean literal unions, nullable and optional parameters, `Record<string, T>`,
+  `Date`, `ArrayBuffer`/`Uint8Array`, and nested array/generic forms.
+- Generated interfaces carry `[ReactApiContract]` and `[ReactApiMethod]` attributes, so the bridge
+  uses the exact TypeScript API and method names instead of deriving them from C# identifiers.
+- Generated interfaces are `partial`, and generated hint names include the source file and an index,
+  so multiple contracts with the same interface name no longer collide.
+- New source-generator diagnostics: `AVR0001` for unsupported members, `AVR0002` for types that fall
+  back to `JsonElement`, and `AVR0003` for generic interfaces.
+- The runtime now binds missing trailing optional arguments to their generated defaults and supports
+  methods whose TypeScript name does not match the C# name.
+- The bridge client adds `createHostApiProxy<T>()`, which turns the TypeScript contract into a typed
+  proxy and removes hand-written API/method strings from React code.
+- New `Avalonia.React.SourceGenerator.Tests` project (12 tests) covering parsing, diagnostics,
+  generated source shape, and compilation of the generated code.
+- The sample contract is now a single file at `samples/react-app/src/FrontendApi.d.ts`, shared by the
+  source generator and the React app's typed proxy.
+
+### Changed
+
+- Package version is `0.3.0`.
+- The sample uses `hostApi.getGreeting(...)` through `createHostApiProxy` instead of passing method
+  names as strings.
+- CI runs both test projects.
+
+### Documentation
+
+- Documented the expanded TypeScript surface, diagnostics, generated attributes, typed proxy, and
+  the single-source-of-truth contract workflow.
+
 ## [0.2.0] - 2026-10-18
 
 ### Added

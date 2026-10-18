@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import "@douyinfe/semi-ui/react19-adapter";
 import { Avatar, Button, Card, Col, Layout, Nav, Row, Space, Tag, Typography } from "@douyinfe/semi-ui";
-import { invokeHostApi, postMessage, signalReady, subscribe } from "@avalonia-react/bridge";
+import { createHostApiProxy, postMessage, signalReady, subscribe } from "@avalonia-react/bridge";
+import type { HostApi } from "./FrontendApi";
+
+const hostApi = createHostApiProxy<HostApi>("HostApi");
 
 const ServiceTable = lazy(() => import("./ServiceTable"));
 
@@ -17,7 +20,7 @@ export default function App() {
 
   useEffect(() => {
     let disposed = false;
-    void invokeHostApi<string>("HostApi", "getGreeting", "Semi Design").then(
+    void hostApi.getGreeting("Semi Design").then(
       message => { if (!disposed) setGreeting(message); },
       () => { if (!disposed) setGreeting("Avalonia 宿主已连接"); },
     );
@@ -66,7 +69,7 @@ export default function App() {
             </div>
             <Space>
               <Button onClick={() => setClicks((value) => value + 1)}>React 点击：{clicks}</Button>
-              <Button onClick={async () => setApiResult(await invokeHostApi<string>("HostApi", "getGreeting", "Semi Design"))}>
+              <Button onClick={async () => setApiResult(await hostApi.getGreeting("Semi Design"))}>
                 调用生成的 .NET API
               </Button>
               <Button theme="solid" type="primary" onClick={() => postMessage("react:clicked", { at: new Date().toISOString() })}>

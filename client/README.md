@@ -16,6 +16,15 @@ Use `invokeHostApi<T>(api, method, ...args)` to call a method exposed by a gener
 const greeting = await invokeHostApi<string>("HostApi", "getGreeting", "Semi Design");
 ```
 
+Keep the TypeScript contract as the single source of truth with `createHostApiProxy`, which maps property access to `invokeHostApi` and lets the compiler check API and method names:
+
+```ts
+import type { HostApi } from "./FrontendApi";
+
+const hostApi = createHostApiProxy<HostApi>("HostApi");
+const greeting = await hostApi.getGreeting("Ada");
+```
+
 Use `invokeHostApiWithOptions` when a call needs a timeout or cancellation:
 
 ```ts

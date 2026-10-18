@@ -23,5 +23,7 @@
     <None Update="build\Avalonia.React.SourceGenerator.props" Pack="true" PackagePath="buildTransitive\Avalonia.React.SourceGenerator.props" />
     <None Include="README.md" Pack="true" PackagePath="README.md" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="LICENSE" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
 </Project>

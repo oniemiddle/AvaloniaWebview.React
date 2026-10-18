@@ -292,14 +292,29 @@ public sealed class AvaloniaReactWebView : NativeWebView
             throw new ArgumentException("TApi must be an interface generated from a TypeScript API contract.", nameof(TApi));
         }
 
-        var name = apiName ?? (contract.Name.StartsWith("I", StringComparison.Ordinal) ? contract.Name.Substring(1) : contract.Name);
+        var name = apiName
+            ?? contract.GetCustomAttribute<ReactApiContractAttribute>()?.Name
+            ?? (contract.Name.StartsWith("I", StringComparison.Ordinal) ? contract.Name.Substring(1) : contract.Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (_apis.ContainsKey(name))
         {
             throw new ArgumentException($"An API named '{name}' is already registered on this WebView.", nameof(apiName));
         }
 
-        var methods = contract.GetMethods().ToDictionary(GetJavaScriptMethodName, StringComparer.Ordinal);
+        var methods = new Dictionary<string, MethodInfo>(StringComparer.Ordinal);
+        foreach (var method in contract.GetMethods())
+        {
+            var javascriptName = method.GetCustomAttribute<ReactApiMethodAttribute>()?.Name ?? GetJavaScriptMethodName(method);
+            if (methods.ContainsKey(javascriptName))
+            {
+                throw new ArgumentException(
+                    $"The API contract '{contract.Name}' contains two methods that map to '{javascriptName}'.",
+                    nameof(implementation));
+            }
+
+            methods[javascriptName] = method;
+        }
+
         _apis[name] = new ApiRegistration(implementation, methods);
     }
 
@@ -798,18 +813,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
             var jsonArguments = payload.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Array
                 ? argsElement.EnumerateArray().ToArray()
                 : Array.Empty<JsonElement>();
-            var parameters = method.GetParameters();
-            if (parameters.Length != jsonArguments.Length)
-            {
-                throw new InvalidOperationException($"'{apiName}.{methodName}' expects {parameters.Length} arguments, but received {jsonArguments.Length}.");
-            }
-
-            var arguments = new object?[parameters.Length];
-            for (var index = 0; index < parameters.Length; index++)
-            {
-                arguments[index] = jsonArguments[index].Deserialize(parameters[index].ParameterType, JsonSerializerOptions.Web);
-            }
-
+            var arguments = ReactApiMethodBinder.Bind(method.GetParameters(), jsonArguments, apiName, methodName);
             var implementationMethod = FindImplementationMethod(registration.Implementation.GetType(), method);
             var invocation = implementationMethod.Invoke(registration.Implementation, arguments);
             if (invocation is Task task)

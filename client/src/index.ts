@@ -120,6 +120,29 @@ export function invokeHostApi<T>(api: string, method: string, ...args: unknown[]
 }
 
 /**
+ * Creates a typed proxy for a host API. The TypeScript contract is the single source of truth:
+ * property access becomes `invokeHostApi(api, property, ...args)`, so the API and method names are
+ * checked by the compiler.
+ *
+ * ```ts
+ * import type { HostApi } from "./FrontendApi";
+ * const hostApi = createHostApiProxy<HostApi>("HostApi");
+ * const greeting = await hostApi.getGreeting("Ada");
+ * ```
+ */
+export function createHostApiProxy<T extends object>(api: string): T {
+  return new Proxy({} as T, {
+    get(_target, property) {
+      if (typeof property !== "string") {
+        return undefined;
+      }
+
+      return (...args: unknown[]) => invokeHostApi(api, property, ...args);
+    },
+  });
+}
+
+/**
  * Like {@link invokeHostApi}, with timeout and cancellation support.
  */
 export function invokeHostApiWithOptions<T>(

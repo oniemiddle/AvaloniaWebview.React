@@ -35,12 +35,25 @@ Add an exported interface in a `.d.ts` file under the .NET project. For example:
 export interface HostApi {
   getGreeting(name: string): Promise<string>;
   saveCount(value: number): Promise<void>;
+  findUsers(limit: number, filter?: string): Promise<string[]>;
 }
 ```
 
-This generates `MyApp.Frontend.IHostApi` with `Task<string> GetGreetingAsync(string name)` and `Task SaveCountAsync(double value)`. The first version supports interface method signatures and the TypeScript primitive types `string`, `number`, `boolean`, `void`, `object`, `unknown`, `any`, and arrays; other types map to `JsonElement`.
+This generates `MyApp.Frontend.IHostApi` with `Task<string> GetGreetingAsync(string name)`, `Task SaveCountAsync(double value)`, and `Task<IReadOnlyList<string>> FindUsersAsync(double limit, string? filter = default)`. Generated types include `string`, `number`, `boolean`, `void`, `object`, `unknown`, `any`, arrays, `Record<string, T>`, `Date`, nullable unions, and literal unions; any type that cannot be represented is mapped to `JsonElement` with an `AVR0002` diagnostic. Unsupported members produce `AVR0001`, and generic interfaces are skipped with `AVR0003`.
 
-Implement the generated interface and register it on the WebView with `webView.RegisterApi<IHostApi>(implementation)`. The React helper exposes the methods through `invokeHostApi<T>("HostApi", "getGreeting", "Ada")`.
+Generated interfaces are `partial` and carry `[ReactApiContract]`/`[ReactApiMethod]`, so the bridge uses the exact TypeScript API and method names. Keep the contract in the React project and reference it from the .NET project with `<AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />` to use one file for both sides.
+
+Implement the generated interface and register it on the WebView with `webView.RegisterApi<IHostApi>(implementation)`. On the React side, `createHostApiProxy<T>("HostApi")` returns a compiler-checked proxy, so method names and arguments no longer have to be written as strings:
+
+```ts
+import { createHostApiProxy } from "@avalonia-react/bridge";
+import type { HostApi } from "./FrontendApi";
+
+const hostApi = createHostApiProxy<HostApi>("HostApi");
+const greeting = await hostApi.getGreeting("Ada");
+```
+
+The lower-level `invokeHostApi<T>("HostApi", "getGreeting", "Ada")` form remains available.
 
 ## Host a React development server
 
@@ -230,9 +243,10 @@ Build all three NuGet packages with `dotnet pack src/Avalonia.React/Avalonia.Rea
 ```sh
 dotnet build Avalonia.React.sln -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
 dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
+dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
 ```
 
-The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The test project covers the bridge protocol, source-mode resolution, origin policy, message queue, and the loopback asset server. GitHub Actions runs the same tests on Windows and Linux and packs all three packages.
+The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, and the loopback asset server. The generator tests compile generated interfaces and assert the diagnostics. GitHub Actions runs the same tests on Windows and Linux and packs all three packages.
 
 ## Platform notes
 

@@ -19,8 +19,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - name: Test
+      - name: Test control package
         run: dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release --nologo -v minimal
+      - name: Test source generator
+        run: dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release --nologo -v minimal
 
   pack:
     name: Pack packages
