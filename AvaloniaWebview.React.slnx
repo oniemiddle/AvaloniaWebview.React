@@ -7,6 +7,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/AvaloniaWebview.React.Tests/AvaloniaWebview.React.Tests.csproj" />
     <Project Path="tests/AvaloniaWebview.React.SourceGenerator.Tests/AvaloniaWebview.React.SourceGenerator.Tests.csproj" />
+    <Project Path="tests/AvaloniaWebview.React.WebViewE2E/AvaloniaWebview.React.WebViewE2E.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ReactHost/ReactHost.csproj" />

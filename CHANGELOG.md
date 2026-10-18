@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resource cleanup APIs: `ClearBrowserDataAsync`/`ClearCookiesAsync` for cookies, localStorage,
   sessionStorage, CacheStorage, IndexedDB, and service workers, plus
   `ReactWebViewResources.ClearExtractedAssetsAsync()` for assembly-embedded frontend temp files.
+- Fixed embedded-asset origin support: `EmbeddedAssetOptions.Port` and
+  `EmbeddedAssetsPort` on the controls keep the loopback origin stable across restarts for
+  origin-scoped browser storage and fixed callback URLs.
+- Native WebView E2E smoke harness covering ready, host APIs, host-to-React calls, fixed ports, and
+  localStorage cleanup, plus a Windows CI job.
 
 ## [0.18.0] - 2026-10-18
 

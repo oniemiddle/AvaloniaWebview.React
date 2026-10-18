@@ -43,6 +43,7 @@ This reference describes the public surface of AvaloniaWebview.React `0.17.x`.
 | `ReactSourceMode SourceMode` | `Manual` | `Auto`, `DevServer`, `EmbeddedAssets`, `AssemblyEmbeddedAssets`, or `Manual`. |
 | `Uri? DevServerUrl` | `null` | Explicit Vite URL; non-null makes `Auto` choose `DevServer`. |
 | `string? EmbeddedAssetsRoot` | `null` | Root served by the loopback asset server; defaults to `wwwroot`. |
+| `int EmbeddedAssetsPort` | `0` | Fixed loopback port; `0` uses an ephemeral port. A stable value keeps the browser origin stable across restarts. |
 | `ReactExternalNavigationPolicy ExternalNavigationPolicy` | `OpenInSystemBrowser` | `OpenInSystemBrowser`, `Block`, or `Allow`. |
 | `IList<Uri> AllowedOrigins` | empty | Additional origins allowed to navigate the WebView. Not an API trust list. |
 | `IList<Uri> TrustedApiOrigins` | empty | Additional origins allowed to invoke host APIs. |
@@ -143,6 +144,8 @@ public sealed class ReactWebViewSession
 Every `ReactHostView`/`AvaloniaReactWebView` defaults to `ReactWebViewSession.Shared`; set fields before creating windows. Windows WebView2 uses `ProfileName`/`UserDataFolder`, macOS uses `DataStoreIdentifier`/`NonPersistentDataStore`, and Linux WebKitGTK/WPE use the data/cache directories. `CreateEphemeral()` flips the platform's private/ephemeral switches.
 
 Embedded asset servers are shared automatically for identical `EmbeddedAssetOptions`. Two windows using the same `EmbeddedAssetsRoot` get the same loopback origin, so cookies/localStorage/IndexedDB match; the server is reference-counted and stops after the last window releases it. Different roots or server tuning options get separate servers. Browser storage is shared, but registered host APIs remain per WebView.
+
+By default the port is ephemeral, so the origin changes across application restarts. For origin-scoped persistence (`localStorage`, IndexedDB, fixed OAuth callbacks), set `EmbeddedAssetsPort`/`EmbeddedAssetOptions.Port` to a stable app-owned port together with a stable `ReactWebViewSession` profile. A port conflict fails with an actionable error instead of silently choosing another port.
 
 ## Runtime availability
 

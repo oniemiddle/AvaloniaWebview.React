@@ -338,7 +338,13 @@ Use `SourceMode="Manual"` only when the app assigns the source itself.
 using AvaloniaWebview.React;
 using AvaloniaWebview.React.EmbeddedAssets;
 
-var host = new ReactHostView { SourceMode = ReactSourceMode.Manual };
+var host = new ReactHostView
+{
+    SourceMode = ReactSourceMode.Manual,
+    EmbeddedAssetsRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot"),
+    // Stable origin for localStorage/IndexedDB persistence and OAuth callbacks.
+    EmbeddedAssetsPort = 51823,
+};
 host.UseEmbeddedAssets(options =>
 {
     options.RootPath = Path.Combine(AppContext.BaseDirectory, "wwwroot");

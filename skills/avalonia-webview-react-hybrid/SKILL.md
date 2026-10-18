@@ -285,7 +285,7 @@ Typical runtime causes: missing WebView2 on Windows, missing WKWebView/system co
 
 The host window's asset-server subscription follows the control. Do not create a second WebView just to move a tab between windows unless the product actually needs two independent sessions.
 
-Windows that use the same embedded-asset configuration share one reference-counted loopback server, so the React origin and browser storage stay consistent. Configure the browser profile once before creating windows:
+Windows that use the same embedded-asset configuration share one reference-counted loopback server, so the React origin and browser storage stay consistent. The default ephemeral port changes origin across restarts; set `EmbeddedAssetsPort` (or `EmbeddedAssetOptions.Port`) to a stable app-owned port when `localStorage`/IndexedDB must survive restarts or OAuth callbacks need a fixed URL. Configure the browser profile once before creating windows:
 
 ```csharp
 ReactWebViewSession.Shared.ProfileName = "MyAppProfile";

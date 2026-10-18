@@ -218,7 +218,16 @@ This starts a loopback HTTP server on an ephemeral port and serves `wwwroot` wit
 - HTTP/1.1 keep-alive connections with idle timeout and a bounded concurrent connection count;
 - path traversal protection and a strict `Host` header check.
 
-Configure the root directory, fallback file, caching, keep-alive, or connection limits through `EmbeddedAssetOptions` (`EnableKeepAlive`, `IdleConnectionTimeout`, `MaxRequestsPerConnection`, `MaxConnections`). The server binds only to `127.0.0.1` and stops when the host window closes. Set `SourceMode="EmbeddedAssets"` in a Debug build to test the published path without switching to Release. On macOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
+Configure the root directory, fallback file, caching, keep-alive, connection limits, or a fixed port through `EmbeddedAssetOptions` (`EnableKeepAlive`, `IdleConnectionTimeout`, `MaxRequestsPerConnection`, `MaxConnections`, `Port`). The server binds only to `127.0.0.1` and stops when the host window closes.
+
+By default the port is ephemeral, so the loopback origin changes on every application start. Browser storage such as `localStorage` and IndexedDB is origin-scoped; set the same port and browser profile when that data must survive restarts:
+
+```csharp
+reactView.EmbeddedAssetsPort = 51823;
+reactView.Session = ReactWebViewSession.Shared;
+```
+
+`EmbeddedAssetsPort` also applies to `SourceMode="Auto"`/`AssemblyEmbeddedAssets`; `UseEmbeddedAssets(options => options.Port = ...)` is the manual equivalent. Pick a port owned by the app because a bound port makes startup fail with a clear "port may be in use" error instead of silently falling back. Set `SourceMode="EmbeddedAssets"` in a Debug build to test the published path without switching to Release. On macOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
 
 Every platform uses the same loopback server for embedded assets. There is no platform-specific virtual-host or scheme-handler path, so SPA fallback, caching, conditional requests, keep-alive, and connection limits behave identically on Windows, macOS, and Linux. The loopback server is the only asset transport the package exposes.
 
@@ -418,6 +427,16 @@ npm --prefix client run verify:package
 ```
 
 The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, JavaScript error parsing, and the loopback asset server (including keep-alive and conditional requests). The generator tests compile generated interfaces and assert the diagnostics. The client tests run on Node's built-in test runner and exercise messaging, the typed proxy, timeouts, aborts, page unload, and error forwarding. GitHub Actions runs all three suites on Windows and Linux and packs the four publishable packages.
+
+### Native WebView smoke test
+
+Unit tests do not execute a real WebView. The E2E harness starts Avalonia, navigates a native WebView to an asset-server page with a known fixed port, and verifies the full bridge path: ready handshake, host API call, host-to-React call, and localStorage cleanup:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File eng/run-webview-e2e.ps1 -Configuration Release -TargetFramework net10.0-windows
+```
+
+It writes `artifacts/webview-e2e-result.json` and exits non-zero if any check fails. The Windows CI job runs this smoke test and uploads the result artifact. The project is [`tests/AvaloniaWebview.React.WebViewE2E`](tests/AvaloniaWebview.React.WebViewE2E/AvaloniaWebview.React.WebViewE2E.csproj).
 
 ## Release
 
