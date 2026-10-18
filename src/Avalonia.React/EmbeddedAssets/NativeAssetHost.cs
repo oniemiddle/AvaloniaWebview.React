@@ -1,7 +1,8 @@
+#if WINDOWS
+
 using System.Runtime.InteropServices;
 using Avalonia.Platform;
-
-#if WINDOWS
+using Avalonia.React.EmbeddedAssets;
 
 #pragma warning disable CA1416 // This file is compiled only for Windows target frameworks.
 

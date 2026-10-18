@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using Avalonia.React.EmbeddedAssets;
 using Avalonia.Styling;
 using Avalonia.Threading;
 

@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace Avalonia.React;
+namespace Avalonia.React.EmbeddedAssets;
 
 /// <summary>
 /// Selects how published frontend files are served.

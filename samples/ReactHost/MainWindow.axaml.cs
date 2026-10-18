@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Platform;
-using Avalonia.React;
+using Avalonia.React.EmbeddedAssets;
 using ReactHost.Frontend;
 
 namespace ReactHost;
