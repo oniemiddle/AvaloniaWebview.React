@@ -136,6 +136,13 @@ public sealed class ReactHostView : Grid, IDisposable
         set => WebView.EmbeddedAssetsRoot = value;
     }
 
+    /// <summary>Gets or sets a fixed loopback port for the embedded asset server; 0 uses an ephemeral port.</summary>
+    public int EmbeddedAssetsPort
+    {
+        get => WebView.EmbeddedAssetsPort;
+        set => WebView.EmbeddedAssetsPort = value;
+    }
+
     /// <summary>Gets or sets the external navigation policy.</summary>
     public ReactExternalNavigationPolicy ExternalNavigationPolicy
     {

@@ -91,7 +91,8 @@ internal static class EmbeddedAssetServerRegistry
         bool EnableKeepAlive,
         long IdleConnectionTimeoutTicks,
         int MaxRequestsPerConnection,
-        int MaxConnections)
+        int MaxConnections,
+        int Port)
     {
         public static OptionsKey Create(EmbeddedAssetOptions options)
         {
@@ -110,7 +111,8 @@ internal static class EmbeddedAssetServerRegistry
                 options.EnableKeepAlive,
                 options.IdleConnectionTimeout.Ticks,
                 options.MaxRequestsPerConnection,
-                options.MaxConnections);
+                options.MaxConnections,
+                options.Port);
         }
     }
 }

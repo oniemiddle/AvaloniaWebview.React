@@ -40,6 +40,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private readonly DispatcherTimer _reparentingTimer;
     private ReactLoadState _loadState;
     private ReactWebViewSession _session = ReactWebViewSession.Shared;
+    private int _embeddedAssetsPort;
 
     /// <summary>
     /// Creates a React WebView and listens for messages posted by the React client package.
@@ -124,6 +125,25 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     /// <summary>Gets or sets the published frontend directory. Defaults to <c>wwwroot</c> next to the executable.</summary>
     public string? EmbeddedAssetsRoot { get; set; }
+
+    /// <summary>
+    /// Gets or sets a fixed loopback port for the embedded asset server. Defaults to 0 (an
+    /// ephemeral port). A stable port keeps the browser origin stable across restarts, which
+    /// <c>localStorage</c>/IndexedDB persistence and fixed callback URLs require.
+    /// </summary>
+    public int EmbeddedAssetsPort
+    {
+        get => _embeddedAssetsPort;
+        set
+        {
+            if (value is < 0 or > 65535)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "EmbeddedAssetsPort must be between 0 and 65535.");
+            }
+
+            _embeddedAssetsPort = value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets what happens when a navigation leaves the application origin. Defaults to
@@ -228,7 +248,10 @@ public sealed class AvaloniaReactWebView : NativeWebView
             throw new InvalidOperationException("Embedded assets are already enabled.");
         }
 
-        var options = new EmbeddedAssetOptions();
+        var options = new EmbeddedAssetOptions
+        {
+            Port = EmbeddedAssetsPort,
+        };
         configure?.Invoke(options);
         _embeddedAssetOptions = options;
 

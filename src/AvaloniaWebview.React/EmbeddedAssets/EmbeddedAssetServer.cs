@@ -30,6 +30,13 @@ public sealed class EmbeddedAssetOptions
 
     /// <summary>Gets or sets the maximum number of concurrent connections. Defaults to 64.</summary>
     public int MaxConnections { get; set; } = 64;
+
+    /// <summary>
+    /// Gets or sets a fixed loopback TCP port. Defaults to 0, which asks the operating system for
+    /// an ephemeral port. A fixed port keeps the asset origin stable across application restarts,
+    /// which browser storage such as <c>localStorage</c> and IndexedDB requires.
+    /// </summary>
+    public int Port { get; set; }
 }
 
 /// <summary>
@@ -131,14 +138,32 @@ public sealed class EmbeddedAssetServer : IAssetTransport
             throw new ArgumentOutOfRangeException(nameof(options), "MaxConnections must be positive.");
         }
 
+        if (options.Port is < 0 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Port must be between 0 and 65535.");
+        }
+
         _enableCaching = options.EnableCaching;
         _enableKeepAlive = options.EnableKeepAlive;
         _idleConnectionTimeout = options.IdleConnectionTimeout;
         _maxRequestsPerConnection = options.MaxRequestsPerConnection;
         _connectionLimit = new SemaphoreSlim(options.MaxConnections);
 
-        _listener = new TcpListener(IPAddress.Loopback, 0);
-        _listener.Start();
+        _listener = new TcpListener(IPAddress.Loopback, options.Port);
+        try
+        {
+            _listener.Start();
+        }
+        catch (SocketException exception)
+        {
+            _listener.Stop();
+            throw new InvalidOperationException(
+                options.Port == 0
+                    ? "Could not bind the loopback embedded asset server."
+                    : $"Could not bind loopback embedded asset port {options.Port}. Another process may be using it.",
+                exception);
+        }
+
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         BaseUri = new Uri($"http://127.0.0.1:{port}/");
         _allowedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
