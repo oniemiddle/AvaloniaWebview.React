@@ -8,3 +8,4 @@ Rule ID | Category | Severity | Notes
 AVR0001 | Avalonia.React | Warning | Unsupported TypeScript member skipped
 AVR0002 | Avalonia.React | Info | TypeScript type mapped to JsonElement
 AVR0003 | Avalonia.React | Warning | Generic TypeScript interface skipped
+AVR0004 | Avalonia.React | Warning | Unsupported TypeScript enum skipped

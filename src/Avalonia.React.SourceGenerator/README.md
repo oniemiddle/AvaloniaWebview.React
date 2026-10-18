@@ -13,7 +13,56 @@ export interface HostApi {
 
 The example generates `IHostApi` in `MyApp.Frontend`, with `Task<string> GetGreetingAsync(string name)`, `Task SaveCountAsync(double value)`, and `Task<IReadOnlyList<string>> FindUsersAsync(double limit, string? filter = default)` members.
 
-Supported syntax: single-line and multi-line method signatures, interface inheritance (`export interface HostApi extends BaseApi`), optional parameters, `Promise<T>`/`PromiseLike<T>` returns, primitive types, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`), `Record<string, T>`, `Date`, `ArrayBuffer`/`Uint8Array`, nullable unions (`string | null`), and literal unions (`"light" | "dark"`). Types that cannot be represented are mapped to `JsonElement` and reported as `AVR0002`; unsupported members report `AVR0001`; generic interfaces are skipped with `AVR0003`.
+Supported syntax: single-line and multi-line method signatures, interface inheritance (`export interface HostApi extends BaseApi`), optional parameters, `Promise<T>`/`PromiseLike<T>` returns, primitive types, arrays (`T[]`, `Array<T>`, `ReadonlyArray<T>`), `Record<string, T>`, `Date`, `ArrayBuffer`/`Uint8Array`, nullable unions (`string | null`), and literal unions (`"light" | "dark"`). Types that cannot be represented are mapped to `JsonElement` and reported as `AVR0002`; unsupported members report `AVR0001`; generic interfaces are skipped with `AVR0003`; unsupported enums are skipped with `AVR0004`.
+
+### Generated DTOs and enums
+
+Interfaces with only properties, and object `type` aliases, generate DTO classes:
+
+```ts
+// @namespace MyApp.Frontend
+export enum Status {
+  Active = "active",
+  Disabled = "disabled",
+}
+
+export interface UserProfile {
+  id: number;
+  name: string;
+  nickname?: string;
+  status: Status;
+}
+
+export interface HostApi {
+  save(profile: UserProfile): Promise<UserProfile>;
+}
+```
+
+This emits:
+
+```csharp
+public enum Status
+{
+    [JsonStringEnumMemberName("active")]
+    Active,
+    // ...
+}
+
+public partial class UserProfile
+{
+    [JsonPropertyName("id")]
+    public double Id { get; set; } = default!;
+    public string? Nickname { get; set; }
+    public global::MyApp.Frontend.Status Status { get; set; }
+}
+
+public partial interface IHostApi
+{
+    Task<global::MyApp.Frontend.UserProfile> SaveAsync(global::MyApp.Frontend.UserProfile profile);
+}
+```
+
+String enums use `JsonStringEnumConverter<T>` and `JsonStringEnumMemberName`; numeric enums keep explicit numeric values. Interfaces declared with `extends` become class inheritance for DTOs. Generated DTOs and enums declared in other `.d.ts` files are resolved by unique name across namespaces; ambiguous names fall back to `JsonElement` with `AVR0002`.
 
 Generated interfaces are `partial` and annotated with `[ReactApiContract]` and `[ReactApiMethod]`, so the bridge uses the TypeScript names rather than deriving them from C# identifiers. Multiple interfaces with the same name in different `.d.ts` files no longer collide.
 

@@ -238,6 +238,230 @@ public sealed class TypeScriptApiGeneratorTests
     }
 
     [Fact]
+    public void Generates_string_enums_and_uses_them_in_api_contracts()
+    {
+        var run = Generate("""
+            // @namespace MyApp.Frontend
+            export enum Status {
+              Active = "active",
+              Disabled = "disabled",
+            }
+
+            export interface HostApi {
+              getStatus(): Promise<Status>;
+              setStatus(status: Status): Promise<void>;
+            }
+            """);
+
+        var sources = run.Sources().ToArray();
+        Assert.Equal(2, sources.Length);
+        var enumSource = Assert.Single(sources, source => source.Contains("public enum Status"));
+        Assert.Contains("JsonStringEnumConverter<Status>", enumSource);
+        Assert.Contains("JsonStringEnumMemberName(\"active\")", enumSource);
+        Assert.Contains("Active,", enumSource);
+
+        var apiSource = Assert.Single(sources, source => source.Contains("public partial interface IHostApi"));
+        Assert.Contains("Task<global::MyApp.Frontend.Status> GetStatusAsync();", apiSource);
+        Assert.Contains("Task SetStatusAsync(global::MyApp.Frontend.Status status);", apiSource);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Generates_numeric_enums_with_explicit_values()
+    {
+        var run = Generate("""
+            export enum Priority {
+              Low = 1,
+              High = 5,
+            }
+            """);
+
+        var source = run.SingleSource();
+        Assert.Contains("public enum Priority", source);
+        Assert.Contains("Low = 1,", source);
+        Assert.Contains("High = 5,", source);
+        Assert.DoesNotContain("JsonStringEnumConverter", source);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Generates_dto_classes_with_json_property_names_and_local_types()
+    {
+        var run = Generate("""
+            // @namespace MyApp.Frontend
+            export enum Status {
+              Active = "active",
+            }
+
+            export interface UserProfile {
+              id: number;
+              name: string;
+              nickname?: string;
+              tags: string[];
+              status: Status;
+            }
+
+            export interface HostApi {
+              save(profile: UserProfile): Promise<UserProfile>;
+            }
+            """);
+
+        var sources = run.Sources().ToArray();
+        var dtoSource = Assert.Single(sources, source => source.Contains("public partial class UserProfile"));
+        Assert.Contains("JsonPropertyName(\"id\")", dtoSource);
+        Assert.Contains("public double Id { get; set; } = default!;", dtoSource);
+        Assert.Contains("public string Name { get; set; } = default!;", dtoSource);
+        Assert.Contains("public string? Nickname { get; set; }", dtoSource);
+        Assert.Contains("public global::System.Collections.Generic.IReadOnlyList<string> Tags { get; set; }", dtoSource);
+        Assert.Contains("public global::MyApp.Frontend.Status Status { get; set; }", dtoSource);
+
+        var apiSource = Assert.Single(sources, source => source.Contains("public partial interface IHostApi"));
+        Assert.Contains(
+            "Task<global::MyApp.Frontend.UserProfile> SaveAsync(global::MyApp.Frontend.UserProfile profile);",
+            apiSource);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Generates_dto_classes_from_object_type_aliases()
+    {
+        var run = Generate("""
+            export type Settings = {
+              theme: string;
+              compact?: boolean;
+            };
+
+            export interface HostApi {
+              save(settings: Settings): Promise<void>;
+            }
+            """);
+
+        var sources = run.Sources().ToArray();
+        Assert.Contains(sources, source => source.Contains("public partial class Settings"));
+        var apiSource = Assert.Single(sources, source => source.Contains("public partial interface IHostApi"));
+        Assert.Contains("Settings settings", apiSource);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Resolves_scalar_type_aliases_without_emitting_a_type()
+    {
+        var run = Generate("""
+            export type UserId = string;
+
+            export interface HostApi {
+              find(id: UserId): Promise<void>;
+            }
+            """);
+
+        var source = run.SingleSource();
+        Assert.Contains("Task FindAsync(string id);", source);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Generates_dto_inheritance_for_interface_extends()
+    {
+        var run = Generate("""
+            export interface BaseEntity {
+              id: number;
+            }
+
+            export interface User extends BaseEntity {
+              name: string;
+            }
+            """);
+
+        var sources = run.Sources().ToArray();
+        Assert.Contains(sources, source => source.Contains("public partial class BaseEntity"));
+        Assert.Contains(sources, source => source.Contains("public partial class User : BaseEntity"));
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Skips_mixed_enum_values_with_a_diagnostic()
+    {
+        var run = Generate("""
+            export enum Broken {
+              Text = "text",
+              Number = 1,
+            }
+            """);
+
+        Assert.Contains(run.Diagnostics, diagnostic => diagnostic.Id == "AVR0004");
+        Assert.Empty(run.Results.SelectMany(result => result.GeneratedSources));
+    }
+
+    [Fact]
+    public void Resolves_types_declared_in_another_file()
+    {
+        var run = Generate(
+            """
+            // @namespace MyApp.Frontend
+            export interface User {
+              id: number;
+            }
+            """,
+            """
+            // @namespace MyApp.Frontend
+            export interface HostApi {
+              save(user: User): Promise<User>;
+            }
+            """);
+
+        var sources = run.Sources().ToArray();
+        Assert.Contains(sources, source => source.Contains("public partial class User"));
+        var apiSource = Assert.Single(sources, source => source.Contains("public partial interface IHostApi"));
+        Assert.Contains("global::MyApp.Frontend.User", apiSource);
+        Assert.DoesNotContain("JsonElement", apiSource);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Resolves_types_across_namespaces()
+    {
+        var run = Generate(
+            """
+            // @namespace Shared
+            export enum Status {
+              Active = "active",
+            }
+            """,
+            """
+            // @namespace MyApp.Frontend
+            export interface HostApi {
+              getStatus(): Promise<Status>;
+            }
+            """);
+
+        var sources = run.Sources().ToArray();
+        var apiSource = Assert.Single(sources, source => source.Contains("public partial interface IHostApi"));
+        Assert.Contains("Task<global::Shared.Status> GetStatusAsync();", apiSource);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Resolves_dto_inheritance_across_files()
+    {
+        var run = Generate(
+            """
+            // @namespace MyApp.Frontend
+            export interface BaseEntity {
+              id: number;
+            }
+            """,
+            """
+            // @namespace MyApp.Frontend
+            export interface User extends BaseEntity {
+              name: string;
+            }
+            """);
+
+        Assert.Contains(run.Sources(), source => source.Contains("public partial class User : BaseEntity"));
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
     public void Skips_generic_interfaces_with_a_diagnostic()
     {
         var run = Generate("""

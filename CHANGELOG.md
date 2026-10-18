@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-10-18
+
+### Added
+
+- The source generator now emits DTO classes for property-only interfaces and object
+  `export type` aliases, with `[JsonPropertyName]` properties, nullable optional properties,
+  and class inheritance for `extends`.
+- Exported enums generate C# enums. String enums use `JsonStringEnumConverter<T>` with
+  `JsonStringEnumMemberName` values; numeric enums keep explicit values. Unsupported enums report
+  `AVR0004`.
+- Referenced DTOs and enums are resolved across `.d.ts` files by unique type name (including across
+  namespaces) instead of falling back to `JsonElement`; ambiguous names still report `AVR0002`.
+
+### Changed
+
+- Package version is `0.11.0`.
+- The generator test suite now covers DTOs, enums, aliases, and cross-file resolution (24 tests).
+
 ## [0.10.0] - 2026-10-18
 
 ### Changed

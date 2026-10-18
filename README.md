@@ -39,7 +39,30 @@ export interface HostApi {
 }
 ```
 
-This generates `MyApp.Frontend.IHostApi` with `Task<string> GetGreetingAsync(string name)`, `Task SaveCountAsync(double value)`, and `Task<IReadOnlyList<string>> FindUsersAsync(double limit, string? filter = default)`. Generated types include `string`, `number`, `boolean`, `void`, `object`, `unknown`, `any`, arrays, `Record<string, T>`, `Date`, nullable unions, and literal unions; any type that cannot be represented is mapped to `JsonElement` with an `AVR0002` diagnostic. Unsupported members produce `AVR0001`, and generic interfaces are skipped with `AVR0003`.
+This generates `MyApp.Frontend.IHostApi` with `Task<string> GetGreetingAsync(string name)`, `Task SaveCountAsync(double value)`, and `Task<IReadOnlyList<string>> FindUsersAsync(double limit, string? filter = default)`. Generated types include `string`, `number`, `boolean`, `void`, `object`, `unknown`, `any`, arrays, `Record<string, T>`, `Date`, nullable unions, and literal unions; any type that cannot be represented is mapped to `JsonElement` with an `AVR0002` diagnostic. Unsupported members produce `AVR0001`, generic interfaces are skipped with `AVR0003`, and unsupported enums are skipped with `AVR0004`.
+
+Interfaces without methods and object `type` aliases generate DTO classes instead of API contracts:
+
+```ts
+// @namespace MyApp.Frontend
+export enum Status {
+  Active = "active",
+  Disabled = "disabled",
+}
+
+export interface UserProfile {
+  id: number;
+  name: string;
+  nickname?: string;
+  status: Status;
+}
+
+export interface HostApi {
+  save(profile: UserProfile): Promise<UserProfile>;
+}
+```
+
+This emits a `UserProfile` class with `[JsonPropertyName]` properties, a `Status` enum using `JsonStringEnumMemberName` values, and an `IHostApi.SaveAsync(UserProfile)` method. Generated DTOs and enums declared in other `.d.ts` files are resolved when their names are unique; otherwise they fall back to `JsonElement`.
 
 Generated interfaces are `partial` and carry `[ReactApiContract]`/`[ReactApiMethod]`, so the bridge uses the exact TypeScript API and method names. Keep the contract in the React project and reference it from the .NET project with `<AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />` to use one file for both sides.
 
