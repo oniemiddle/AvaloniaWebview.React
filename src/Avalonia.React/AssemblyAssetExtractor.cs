@@ -129,7 +129,7 @@ internal static class AssemblyAssetExtractor
     private static string NormalizePrefix(string prefix)
     {
         var normalized = prefix.Replace('\\', '/');
-        return normalized.EndsWith("/", StringComparison.Ordinal) ? normalized : normalized + "/";
+        return normalized.EndsWith('/') ? normalized : normalized + "/";
     }
 
     private static string Sanitize(string value)

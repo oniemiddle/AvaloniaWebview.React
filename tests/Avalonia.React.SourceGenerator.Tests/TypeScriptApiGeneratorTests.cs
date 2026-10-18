@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using System.Text;
-using Avalonia.React.SourceGenerator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -29,10 +28,12 @@ public sealed class TypeScriptApiGeneratorTests
         }
         """;
 
-    private static readonly MetadataReference[] References = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+    private static readonly MetadataReference[] References =
+    [
+        .. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
         .Split(Path.PathSeparator)
         .Select(path => MetadataReference.CreateFromFile(path))
-        .ToArray();
+    ];
 
     [Fact]
     public void Generates_namespace_interface_and_async_methods()
@@ -252,7 +253,7 @@ public sealed class TypeScriptApiGeneratorTests
     private static GenerationRun Generate(params string[] sources) => Generate(sources, emitCancellationToken: false);
 
     private static GenerationRun Generate(string source, bool emitCancellationToken) =>
-        Generate(new[] { source }, emitCancellationToken);
+        Generate([source], emitCancellationToken);
 
     private static GenerationRun Generate(string[] sources, bool emitCancellationToken)
     {
@@ -262,29 +263,24 @@ public sealed class TypeScriptApiGeneratorTests
 
         var compilation = CSharpCompilation.Create(
             "GeneratorTests",
-            new[] { CSharpSyntaxTree.ParseText(AttributeStubs) },
+            [CSharpSyntaxTree.ParseText(AttributeStubs)],
             References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
-            generators: new[] { new TypeScriptApiGenerator().AsSourceGenerator() },
+            generators: [new TypeScriptApiGenerator().AsSourceGenerator()],
             additionalTexts: files,
             optionsProvider: new TestOptionsProvider(emitCancellationToken));
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out _);
         return new GenerationRun(driver.GetRunResult(), outputCompilation);
     }
 
-    private sealed class TestOptionsProvider : AnalyzerConfigOptionsProvider
+    private sealed class TestOptionsProvider(bool emitCancellationToken) : AnalyzerConfigOptionsProvider
     {
-        private readonly AnalyzerConfigOptions _options;
-
-        public TestOptionsProvider(bool emitCancellationToken)
+        private readonly AnalyzerConfigOptions _options = new TestOptions(new Dictionary<string, string>
         {
-            _options = new TestOptions(new Dictionary<string, string>
-            {
-                ["build_property.AvaloniaReactGenerateCancellationToken"] = emitCancellationToken ? "true" : "false",
-            });
-        }
+            ["build_property.AvaloniaReactGenerateCancellationToken"] = emitCancellationToken ? "true" : "false",
+        });
 
         public override AnalyzerConfigOptions GlobalOptions => _options;
 
@@ -293,18 +289,11 @@ public sealed class TypeScriptApiGeneratorTests
         public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => _options;
     }
 
-    private sealed class TestOptions : AnalyzerConfigOptions
+    private sealed class TestOptions(IReadOnlyDictionary<string, string> values) : AnalyzerConfigOptions
     {
-        private readonly IReadOnlyDictionary<string, string> _values;
-
-        public TestOptions(IReadOnlyDictionary<string, string> values)
-        {
-            _values = values;
-        }
-
         public override bool TryGetValue(string key, out string value)
         {
-            if (_values.TryGetValue(key, out var found))
+            if (values.TryGetValue(key, out var found))
             {
                 value = found;
                 return true;
@@ -315,36 +304,21 @@ public sealed class TypeScriptApiGeneratorTests
         }
     }
 
-    private sealed class InMemoryAdditionalText : AdditionalText
+    private sealed class InMemoryAdditionalText(string path, string text) : AdditionalText
     {
-        private readonly string _text;
-
-        public InMemoryAdditionalText(string path, string text)
-        {
-            Path = path;
-            _text = text;
-        }
-
-        public override string Path { get; }
+        public override string Path { get; } = path;
 
         public override SourceText GetText(CancellationToken cancellationToken = default) =>
-            SourceText.From(_text, Encoding.UTF8);
+            SourceText.From(text, Encoding.UTF8);
     }
 
-    private sealed class GenerationRun
+    private sealed class GenerationRun(GeneratorDriverRunResult result, Compilation compilation)
     {
-        public GenerationRun(GeneratorDriverRunResult result, Compilation compilation)
-        {
-            Results = result.Results;
-            Diagnostics = result.Diagnostics;
-            Compilation = compilation;
-        }
+        public ImmutableArray<GeneratorRunResult> Results { get; } = result.Results;
 
-        public ImmutableArray<GeneratorRunResult> Results { get; }
+        public ImmutableArray<Diagnostic> Diagnostics { get; } = result.Diagnostics;
 
-        public ImmutableArray<Diagnostic> Diagnostics { get; }
-
-        public Compilation Compilation { get; }
+        public Compilation Compilation { get; } = compilation;
 
         public IEnumerable<string> Sources() => Results
             .SelectMany(result => result.GeneratedSources)

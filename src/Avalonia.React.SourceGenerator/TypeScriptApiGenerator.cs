@@ -474,7 +474,7 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
 
     private static string Identifier(string name)
     {
-        var cleaned = Regex.Replace(name, @"[^A-Za-z0-9_]", "_");
+        var cleaned = Regex.Replace(name, "[^A-Za-z0-9_]", "_");
         if (cleaned.Length == 0 || char.IsDigit(cleaned[0]))
         {
             cleaned = "_" + cleaned;
@@ -485,9 +485,9 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
 
     private static string MakeNullable(string type) => type.EndsWith("?", StringComparison.Ordinal) ? type : type + "?";
 
-    private static string EscapeString(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    private static string EscapeString(string value) => value.Replace(@"\", @"\\").Replace("\"", "\\\"");
 
-    private static string Sanitize(string value) => Regex.Replace(value, @"[^A-Za-z0-9_]", "_");
+    private static string Sanitize(string value) => Regex.Replace(value, "[^A-Za-z0-9_]", "_");
 
     private static string Summarize(string value)
     {
@@ -497,7 +497,7 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
 
     private static string FileName(string path)
     {
-        var separator = path.LastIndexOfAny(new[] { '/', '\\' });
+        var separator = path.LastIndexOfAny(['/', '\\']);
         var name = separator >= 0 ? path.Substring(separator + 1) : path;
         var dot = name.LastIndexOf('.');
         return dot > 0 ? name.Substring(0, dot) : name;
@@ -524,77 +524,46 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
         return inner.Length > 0;
     }
 
-    private sealed class DeclarationFile
+    private sealed class DeclarationFile(string path, string text)
     {
-        public DeclarationFile(string path, string text)
-        {
-            Path = path;
-            Text = text;
-        }
+        public string Path { get; } = path;
 
-        public string Path { get; }
-
-        public string Text { get; }
+        public string Text { get; } = text;
     }
 
-    private sealed class InterfaceDeclaration
+    private sealed class InterfaceDeclaration(string name)
     {
-        public InterfaceDeclaration(string name)
-        {
-            TypeScriptName = name;
-            InterfaceName = ToInterfaceName(name);
-        }
+        public string TypeScriptName { get; } = name;
 
-        public string TypeScriptName { get; }
+        public string InterfaceName { get; } = ToInterfaceName(name);
 
-        public string InterfaceName { get; }
+        public List<string> BaseNames { get; } = [];
 
-        public List<string> BaseNames { get; } = new();
-
-        public List<MethodDeclaration> Methods { get; } = new();
+        public List<MethodDeclaration> Methods { get; } = [];
     }
 
-    private sealed class MethodDeclaration
+    private sealed class MethodDeclaration(string name)
     {
-        public MethodDeclaration(string name)
-        {
-            Name = name;
-        }
-
-        public string Name { get; }
+        public string Name { get; } = name;
 
         public string ReturnType { get; set; } = "Task";
 
         public bool IsAsync { get; set; }
 
-        public List<ParameterDeclaration> Parameters { get; } = new();
+        public List<ParameterDeclaration> Parameters { get; } = [];
     }
 
-    private sealed class ParameterDeclaration
+    private sealed class ParameterDeclaration(string name, string type, bool optional)
     {
-        public ParameterDeclaration(string name, string type, bool optional)
-        {
-            Name = name;
-            Type = type;
-            Optional = optional;
-        }
+        public string Name { get; } = name;
 
-        public string Name { get; }
+        public string Type { get; } = type;
 
-        public string Type { get; }
-
-        public bool Optional { get; }
+        public bool Optional { get; } = optional;
     }
 
-    private sealed class TypeMapper
+    private sealed class TypeMapper(Action<string> fallback)
     {
-        private readonly Action<string> _fallback;
-
-        public TypeMapper(Action<string> fallback)
-        {
-            _fallback = fallback;
-        }
-
         public string Map(string typeScriptType)
         {
             var trimmed = typeScriptType.Trim();
@@ -630,7 +599,7 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
             }
             else
             {
-                _fallback(trimmed);
+                fallback(trimmed);
                 mapped = "global::System.Text.Json.JsonElement";
             }
 
@@ -672,7 +641,7 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
                 case "null":
                 case "undefined": return "object?";
                 case "Date": return "global::System.DateTimeOffset";
-                case "ArrayBuffer": return "byte[]";
+                case "ArrayBuffer":
                 case "Uint8Array": return "byte[]";
             }
 
@@ -691,7 +660,7 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
                     return "global::System.Collections.Generic.IReadOnlyDictionary<string, " + Map(recordArguments[1]) + ">";
                 }
 
-                _fallback(trimmed);
+                fallback(trimmed);
                 return "global::System.Text.Json.JsonElement";
             }
 
@@ -700,7 +669,7 @@ public sealed class TypeScriptApiGenerator : IIncrementalGenerator
                 return "global::System.Collections.Generic.IReadOnlyList<" + Map(trimmed.Substring(0, trimmed.Length - 2)) + ">";
             }
 
-            _fallback(trimmed);
+            fallback(trimmed);
             return "global::System.Text.Json.JsonElement";
         }
 

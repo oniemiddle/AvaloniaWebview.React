@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text.Json;
-using Avalonia.React;
 
 namespace Avalonia.React.Tests;
 

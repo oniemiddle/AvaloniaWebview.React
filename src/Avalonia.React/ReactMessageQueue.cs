@@ -8,7 +8,7 @@ namespace Avalonia.React;
 internal sealed class ReactMessageQueue
 {
     private readonly Queue<QueuedMessage> _messages = new();
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
 
     public int Count
     {
@@ -87,7 +87,7 @@ internal sealed class ReactMessageQueue
                 return;
             }
 
-            pending = _messages.ToArray();
+            pending = [.. _messages];
             _messages.Clear();
         }
 

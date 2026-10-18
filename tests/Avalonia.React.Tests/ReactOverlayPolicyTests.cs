@@ -1,5 +1,3 @@
-using Avalonia.React;
-
 namespace Avalonia.React.Tests;
 
 public sealed class ReactOverlayPolicyTests

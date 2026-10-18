@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Avalonia.React;
 using Avalonia.React.EmbeddedAssets;
 
 namespace Avalonia.React.Tests;

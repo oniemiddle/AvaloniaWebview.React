@@ -21,7 +21,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private readonly Dictionary<string, ApiRegistration> _apis = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CancellationTokenSource> _pendingInvocations = new(StringComparer.Ordinal);
     private readonly ReactMessageQueue _messageQueue = new();
-    private readonly List<Uri> _allowedOrigins = new();
+    private readonly List<Uri> _allowedOrigins = [];
     private IAssetTransport? _assetTransport;
 #if WINDOWS
     private NativeAssetHost? _nativeAssetHost;
@@ -1041,7 +1041,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
                 return;
             }
 
-            pending = _pendingInvocations.Values.ToArray();
+            pending = [.. _pendingInvocations.Values];
             if (dispose)
             {
                 _pendingInvocations.Clear();
