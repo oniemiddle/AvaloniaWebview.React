@@ -159,7 +159,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <see cref="JsonSerializerOptions.Web"/>.
     /// </summary>
     public JsonSerializerOptions BridgeJsonSerializerOptions { get; set; } =
-        ReactJsonSerializerDefaults.Options ?? new(JsonSerializerDefaults.Web);
+        ReactJsonSerializerDefaults.Options;
 
     /// <summary>
     /// Gets or sets the maximum number of host-to-React messages held while the page is loading.
