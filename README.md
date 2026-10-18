@@ -437,6 +437,39 @@ ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
 
 Setting `ReactJsonSerializerDefaults.Options` keeps the generated resolver as a fallback, so generated DTO/enum contracts and custom context types can coexist. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's primitive API and a generated DTO/enum/list contract were verified with `PublishTrimmed=true` and reflection-based serialization disabled.
 
+## Multi-window apps and shared sessions
+
+Each window can host its own `ReactHostView`. Windows created with the same embedded-asset configuration share one loopback asset server, so the React origin stays stable and `localStorage`, cookies, and IndexedDB line up across windows. The last window release stops the server; closing one window does not break the others.
+
+Browser data is controlled by `ReactWebViewSession`. All views use `ReactWebViewSession.Shared` by default:
+
+```csharp
+// Configure once, before creating windows.
+ReactWebViewSession.Shared.ProfileName = "MyAppProfile";
+ReactWebViewSession.Shared.UserDataFolder = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "MyApp",
+    "WebView");
+
+var first = new MainWindow();
+var second = new MainWindow();
+first.Show();
+second.Show();
+```
+
+Set `ProfileName`/`UserDataFolder` for deterministic WebView2 sharing on Windows; macOS shares the default WKWebView data store, and Linux uses `BaseDataDirectory`/`BaseCacheDirectory`. For an isolated child window, assign a fresh session before the window's WebView is created:
+
+```csharp
+var privateHost = new ReactHostView
+{
+    Session = ReactWebViewSession.CreateEphemeral(),
+};
+```
+
+`CreateEphemeral()` uses WebView2 InPrivate mode, a non-persistent WKWebView store, or a WebKitGTK ephemeral data manager where the platform supports it. Host API registrations are still per `ReactWebView`; register the APIs each window needs, or share application services. Shared browser storage does not grant a window access to another window's registered .NET APIs.
+
+The sample creates a second window when `AVALONIA_REACT_MULTI_WINDOW=1` is set.
+
 ## Runtime availability preflight
 
 Check the native WebView runtime before creating the window, so a missing runtime becomes an actionable startup message instead of a blank page:

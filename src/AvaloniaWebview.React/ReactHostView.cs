@@ -174,6 +174,13 @@ public sealed class ReactHostView : Grid, IDisposable
         set => WebView.BridgeJsonSerializerOptions = value;
     }
 
+    /// <summary>Gets or sets the shared browser data session used by the WebView.</summary>
+    public ReactWebViewSession Session
+    {
+        get => WebView.Session;
+        set => WebView.Session = value;
+    }
+
     /// <summary>Gets or sets how long a host API implementation may run before a timeout error.</summary>
     public TimeSpan ApiInvokeTimeout
     {

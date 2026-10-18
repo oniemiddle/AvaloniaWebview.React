@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `ReactJsonSerializerDefaults` at assembly load.
 - Runtime availability preflight: `ReactWebViewAvailability.Check()` and `EnsureAvailable()` report
   the platform adapter, engine, runtime version, and install guidance without creating a WebView.
+- Multi-window support: identical embedded-asset configurations share one reference-counted
+  loopback server, and `ReactWebViewSession.Shared` keeps cookies/localStorage consistent across
+  windows. `CreateEphemeral()` provides isolated sessions.
 
 ## [0.17.0] - 2026-10-18
 

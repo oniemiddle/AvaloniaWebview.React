@@ -275,7 +275,34 @@ using (host.BeginReparenting())
 }
 ```
 
-Each WebView owns its asset server; its window subscription follows the control. Do not attach one control to two parents, and do not create a new WebView just to move a tab.
+Each WebView's asset-server subscription follows the control. Views with identical `EmbeddedAssetOptions` share one reference-counted loopback server, so their origin and browser storage match; the last view release stops it. Do not attach one control to two parents, and do not create a new WebView just to move a tab.
+
+### Shared browser session
+
+```csharp
+// Configure before creating the windows.
+ReactWebViewSession.Shared.ProfileName = "MyAppProfile";
+ReactWebViewSession.Shared.UserDataFolder = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "MyApp",
+    "WebView");
+
+var first = new MainWindow();
+var second = new MainWindow();
+first.Show();
+second.Show();
+```
+
+`ProfileName`/`UserDataFolder` control WebView2 sharing on Windows; macOS uses the default WKWebView data store, and Linux uses `BaseDataDirectory`/`BaseCacheDirectory`. Use a fresh session for an isolated window:
+
+```csharp
+var isolated = new ReactHostView
+{
+    Session = ReactWebViewSession.CreateEphemeral(),
+};
+```
+
+Cache/share browser data across windows, but register host APIs on each `ReactWebView` that needs them.
 
 ## Manual source selection
 

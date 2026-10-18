@@ -285,6 +285,20 @@ Typical runtime causes: missing WebView2 on Windows, missing WKWebView/system co
 
 The host window's asset-server subscription follows the control. Do not create a second WebView just to move a tab between windows unless the product actually needs two independent sessions.
 
+Windows that use the same embedded-asset configuration share one reference-counted loopback server, so the React origin and browser storage stay consistent. Configure the browser profile once before creating windows:
+
+```csharp
+ReactWebViewSession.Shared.ProfileName = "MyAppProfile";
+ReactWebViewSession.Shared.UserDataFolder = @"C:\Users\me\AppData\Local\MyApp\WebView";
+
+var first = new MainWindow();
+var second = new MainWindow();
+first.Show();
+second.Show();
+```
+
+For an isolated window, assign `Session = ReactWebViewSession.CreateEphemeral()` before its WebView is created. Host API registrations remain per `ReactWebView`; shared storage does not share registered .NET APIs.
+
 ## Runtime availability preflight
 
 Call the static preflight before creating the first window when the app must show a friendly install message:

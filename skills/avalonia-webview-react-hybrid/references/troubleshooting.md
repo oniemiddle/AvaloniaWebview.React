@@ -147,6 +147,13 @@ Run `ReactWebViewAvailability.Check()` before creating the window:
 - A control can have only one parent. Detach from the old container before attaching to the new one.
 - The asset server's window subscription follows the control, so the loopback server continues across the move.
 
+Multiple windows that open different pages instead of sharing storage:
+
+- Use identical `EmbeddedAssetOptions` (`RootPath`, caching, limits); identical options share one loopback server and origin.
+- Check `ReactWebViewSession.Shared.ProfileName`/`UserDataFolder` on Windows, `DataStoreIdentifier` on macOS, or the data/cache directories on Linux.
+- Closing one window no longer stops another window's shared server; the last release stops it.
+- Registered host APIs are per `ReactWebView`; register them on every window's control (or share services), even when browser storage is shared.
+
 ## 7. Generator and XAML errors
 
 - XAML namespace: `xmlns:react="using:AvaloniaWebview.React"`.

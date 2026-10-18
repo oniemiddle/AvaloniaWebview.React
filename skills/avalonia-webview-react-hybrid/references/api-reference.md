@@ -59,6 +59,7 @@ This reference describes the public surface of AvaloniaWebview.React `0.17.x`.
 | `TimeSpan ReactInvokeTimeout` | 10s | Host-to-React handler timeout; `TimeSpan.Zero` disables. |
 | `int MaxIncomingMessageCharacters` | 4,000,000 | Incoming bridge message limit; `<= 0` disables. |
 | `JsonSerializerOptions BridgeJsonSerializerOptions` | generated defaults or Web defaults | Payload/result serialization options. |
+| `ReactWebViewSession Session` | `ReactWebViewSession.Shared` | Browser profile/session reused across windows. |
 | `bool PreserveWebViewOnDetach` | `true` on `ReactHostView` | Reparent instead of destroying on detach. |
 | `TimeSpan ReparentingTimeout` | 10s | Time to wait for reattachment before releasing the native control. |
 
@@ -119,6 +120,29 @@ public static class ReactJsonSerializerDefaults
 ```
 
 `Options` is non-null and uses web defaults. Generated JSON support registers its resolver with `AddTypeInfoResolver` from a module initializer; assigning `Options` combines the generated resolver as a fallback. Use a custom context for payload types outside generated contracts; a view-level `BridgeJsonSerializerOptions` can be constructed from `ReactJsonSerializerDefaults.Options` to keep that fallback.
+
+## Sessions and multi-window apps
+
+```csharp
+public sealed class ReactWebViewSession
+{
+    public static ReactWebViewSession Shared { get; }
+    public static ReactWebViewSession CreateEphemeral();
+
+    public string? ProfileName { get; set; }
+    public string? UserDataFolder { get; set; }
+    public string? CacheFolder { get; set; }
+    public bool? InPrivateMode { get; set; }
+    public Guid? DataStoreIdentifier { get; set; }
+    public bool? NonPersistentDataStore { get; set; }
+    public bool? SharedProcessModel { get; set; }
+    public bool? EphemeralDataManager { get; set; }
+}
+```
+
+Every `ReactHostView`/`AvaloniaReactWebView` defaults to `ReactWebViewSession.Shared`; set fields before creating windows. Windows WebView2 uses `ProfileName`/`UserDataFolder`, macOS uses `DataStoreIdentifier`/`NonPersistentDataStore`, and Linux WebKitGTK/WPE use the data/cache directories. `CreateEphemeral()` flips the platform's private/ephemeral switches.
+
+Embedded asset servers are shared automatically for identical `EmbeddedAssetOptions`. Two windows using the same `EmbeddedAssetsRoot` get the same loopback origin, so cookies/localStorage/IndexedDB match; the server is reference-counted and stops after the last window releases it. Different roots or server tuning options get separate servers. Browser storage is shared, but registered host APIs remain per WebView.
 
 ## Runtime availability
 

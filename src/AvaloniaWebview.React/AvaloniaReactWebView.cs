@@ -38,6 +38,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private IDisposable? _reparentingScope;
     private readonly DispatcherTimer _reparentingTimer;
     private ReactLoadState _loadState;
+    private ReactWebViewSession _session = ReactWebViewSession.Shared;
 
     /// <summary>
     /// Creates a React WebView and listens for messages posted by the React client package.
@@ -162,6 +163,17 @@ public sealed class AvaloniaReactWebView : NativeWebView
         ReactJsonSerializerDefaults.Options;
 
     /// <summary>
+    /// Gets or sets the browser data session used by this WebView. Defaults to
+    /// <see cref="ReactWebViewSession.Shared"/>, so independent windows share cookies,
+    /// localStorage, and other profile data.
+    /// </summary>
+    public ReactWebViewSession Session
+    {
+        get => _session;
+        set => _session = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
     /// Gets or sets the maximum number of host-to-React messages held while the page is loading.
     /// Defaults to 1024.
     /// </summary>
@@ -231,7 +243,13 @@ public sealed class AvaloniaReactWebView : NativeWebView
         catch
         {
             _embeddedAssetOptions = null;
+            var transport = _assetTransport;
             _assetTransport = null;
+            if (transport is not null)
+            {
+                _ = transport.DisposeAsync().AsTask();
+            }
+
             throw;
         }
     }
@@ -718,10 +736,16 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     private Uri StartLoopbackAssetServer()
     {
-        var server = new EmbeddedAssetServer(_embeddedAssetOptions ?? new EmbeddedAssetOptions());
-        _assetTransport = server;
-        Source = server.BaseUri;
-        return server.BaseUri;
+        var previous = _assetTransport;
+        var transport = EmbeddedAssetServerRegistry.Acquire(_embeddedAssetOptions ?? new EmbeddedAssetOptions());
+        _assetTransport = transport;
+        Source = transport.BaseUri;
+        if (previous is not null)
+        {
+            _ = previous.DisposeAsync().AsTask();
+        }
+
+        return transport.BaseUri;
     }
 
     private void AttachAssetServerWindow(Window window)
@@ -789,6 +813,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private void HandleEnvironmentRequested(object? sender, WebViewEnvironmentRequestedEventArgs args)
     {
         args.EnableDevTools = EnableDevTools;
+        Session.Apply(args);
         if (EnableWindowsOffscreenComposition && args is WindowsWebView2EnvironmentRequestedEventArgs windows)
         {
             windows.ExperimentalOffscreen = true;
