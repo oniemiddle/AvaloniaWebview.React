@@ -15,6 +15,10 @@ function applyTheme(theme: "light" | "dark") {
   }
 }
 
+function systemTheme(): "light" | "dark" {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 subscribe<{ theme: "light" | "dark" }>("theme", ({ theme }) => applyTheme(theme));
 
 const root = document.getElementById("root");
@@ -25,6 +29,9 @@ if (root) {
     const startedAt = performance.now();
     const renderWhenThemeIsReady = () => {
       if (themeApplied || performance.now() - startedAt > 300) {
+        if (!themeApplied) {
+          applyTheme(systemTheme());
+        }
         createRoot(root).render(<App />);
       } else {
         requestAnimationFrame(renderWhenThemeIsReady);
@@ -32,9 +39,7 @@ if (root) {
     };
     renderWhenThemeIsReady();
   } else {
-    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      applyTheme("dark");
-    }
+    applyTheme(systemTheme());
     createRoot(root).render(<App />);
   }
 }

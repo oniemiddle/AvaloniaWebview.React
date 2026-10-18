@@ -3,7 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Avalonia + React</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Avalonia + React 混合桌面工作台：由 .NET 宿主提供数据，React 渲染界面。" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Avalonia · React — 混合桌面工作台</title>
+    <style>
+      /* Paint the correct surface before the bundle loads, then let the host theme take over. */
+      html {
+        background-color: #f4f5f9;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: #090b11;
+        }
+      }
+      html[data-theme="light"] {
+        background-color: #f4f5f9;
+      }
+      html[data-theme="dark"] {
+        background-color: #090b11;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

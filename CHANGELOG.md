@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Rearranged the `samples/react-app` UI into a responsive Semi Design dashboard: a sidebar and top bar,
+  live runtime metric cards driven by the new `getRuntimeMetrics()` contract, a bridge playground with
+  an event stream, and an about view. The page still renders labelled browser values when it runs
+  outside the Avalonia host.
+- `samples/ReactHost` now exposes a reflection-free `SampleHostApi`, uses slimmer native chrome that
+  matches the React dashboard, and keeps the window title stable while reporting `react:clicked`
+  receipts in the status line.
+
 ## [0.19.0] - 2026-10-18
 
 ### Added

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using AvaloniaWebview.React;
 using ReactHost.Frontend;
 
@@ -19,14 +20,26 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // Keep the pill in sync with the toolkit package version (0.19.0) instead of hardcoding it.
+        var toolkitVersion = typeof(ReactHostView).Assembly.GetName().Version;
+        VersionPillText.Text = toolkitVersion is null
+            ? "v0.0.0"
+            : toolkitVersion.Build >= 0
+                ? $"v{toolkitVersion.Major}.{toolkitVersion.Minor}.{toolkitVersion.Build}"
+                : $"v{toolkitVersion.Major}.{toolkitVersion.Minor}";
+
         if (session is not null)
         {
             ReactHost.Session = session;
         }
 
-        HostApiBridge.Register(ReactHost.WebView, new HostApi());
+        HostApiBridge.Register(ReactHost.WebView, new SampleHostApi());
         UpdateRuntimeStatus();
-        ReactHost.BridgeReady += (_, _) => HostStatusText.Text = $"{_runtimeSummary} · React 已就绪";
+        ReactHost.BridgeReady += (_, _) =>
+        {
+            HostStatusText.Text = $"{_runtimeSummary} · React 已就绪";
+            ApplyStatusTone("SemiColorSuccess");
+        };
     }
 
     private void UpdateRuntimeStatus()
@@ -36,6 +49,16 @@ public sealed partial class MainWindow : Window
             ? $"运行时：{availability.Engine} {availability.RuntimeVersion} · {availability.AdapterType}"
             : $"运行时不可用：{availability.Message} {availability.Guidance}";
         HostStatusText.Text = _runtimeSummary;
+        ApplyStatusTone(availability.IsAvailable ? "SemiColorSuccess" : "SemiColorDanger");
+    }
+
+    // The status dot follows the Semi palette; if a token is missing the brush from XAML stays put.
+    private void ApplyStatusTone(string resourceKey)
+    {
+        if (this.TryFindResource(resourceKey, out var resource) && resource is IBrush brush)
+        {
+            RuntimeStateDot.Fill = brush;
+        }
     }
 
     // Native AOT: the payload is a string and the handler result is a string, both covered by the
@@ -113,27 +136,8 @@ public sealed partial class MainWindow : Window
         }
 
         var receivedAt = DateTimeOffset.Now;
-        Title = $"Avalonia + React · 已收到 React 消息 {receivedAt:HH:mm:ss}";
+        HostStatusText.Text = $"{_runtimeSummary}. 已收到 React 消息 {receivedAt:HH:mm:ss}";
+        ApplyStatusTone("SemiColorSuccess");
         _ = ReactHost.PostMessageAsync("react:ack", new ReactAck { At = receivedAt.ToString("HH:mm:ss") });
-    }
-
-    private sealed class HostApi : IHostApi
-    {
-        public Task<string> GetGreetingAsync(string name) =>
-            Task.FromResult($"Hello {name}, from the generated .NET API!");
-
-        public Task<RuntimeSnapshot> GetRuntimeSnapshotAsync()
-        {
-            var availability = ReactWebViewAvailability.Check();
-            return Task.FromResult(new RuntimeSnapshot
-            {
-                Host = "Avalonia 12",
-                WebView = availability.IsAvailable
-                    ? $"{availability.Engine} {availability.RuntimeVersion}".Trim()
-                    : availability.Message,
-                Health = availability.IsAvailable ? ServiceHealth.Healthy : ServiceHealth.Degraded,
-                Tags = ["shared-session", "aot-json", "host-api"],
-            });
-        }
     }
 }

@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import "@douyinfe/semi-ui/react19-adapter";
-import { Avatar, Button, Card, Col, Layout, Nav, Row, Space, Tag, Typography } from "@douyinfe/semi-ui";
+import { Avatar, Layout, Nav, Space, Tag, Typography } from "@douyinfe/semi-ui";
 import { postMessage } from "@avalonia-react/bridge";
 import {
   useAvaloniaMessage,
@@ -12,13 +12,19 @@ import {
   useSignalReady,
 } from "@avalonia-react/bridge/react";
 import type { HostApi, ReactAck, RuntimeSnapshot } from "./FrontendApi";
+import type { BridgeEvent, BridgeEventKind, ViewKey } from "./types";
+import { VIEW_META } from "./types";
+import { useRuntimeMetrics } from "./useRuntimeMetrics";
+import { OverviewView } from "./views/Overview";
+import { PlaygroundView } from "./views/Playground";
+import { AboutView } from "./views/About";
+import { GridIcon, InfoIcon, TerminalIcon } from "./components/Icons";
 
-const ServiceTable = lazy(() => import("./ServiceTable"));
-
-const { Header, Sider, Content } = Layout;
-const { Title, Text } = Typography;
+const { Sider, Header, Content } = Layout;
+const { Text } = Typography;
 
 const SHARED_COUNTER_KEY = "sample:shared-counter";
+const APP_VERSION = "0.19.0";
 
 function readSharedCounter(): number {
   try {
@@ -28,34 +34,62 @@ function readSharedCounter(): number {
   }
 }
 
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
+const NAV_ITEMS: Array<{ itemKey: ViewKey; text: string; icon: ReactNode }> = [
+  { itemKey: "overview", text: "运行概览", icon: <GridIcon size={16} /> },
+  { itemKey: "playground", text: "桥接实验", icon: <TerminalIcon size={16} /> },
+  { itemKey: "about", text: "关于示例", icon: <InfoIcon size={16} /> },
+];
+
 export default function App() {
   const hostApi = useHostApi<HostApi>("HostApi");
+  const bridgeAvailable = useBridgeAvailable();
+  const theme = useHostTheme();
   const greeting = useHostApiInvoke<string>("HostApi", "getGreeting");
   const snapshot = useHostApiInvoke<RuntimeSnapshot>("HostApi", "getRuntimeSnapshot");
-  const theme = useHostTheme();
-  const bridgeAvailable = useBridgeAvailable();
+  const runtimeMetrics = useRuntimeMetrics(hostApi, bridgeAvailable);
 
-  const [clicks, setClicks] = useState(0);
-  const [directGreeting, setDirectGreeting] = useState("");
-  const [ack, setAck] = useState("");
-  const [showServiceDetails, setShowServiceDetails] = useState(false);
+  const [view, setView] = useState<ViewKey>("overview");
+  const [systemTheme, setSystemTheme] = useState<"light" | "dark" | null>(null);
+  const [events, setEvents] = useState<BridgeEvent[]>([]);
+  const [proxyGreeting, setProxyGreeting] = useState("");
   const [sharedCount, setSharedCount] = useState(readSharedCounter);
+  const eventId = useRef(0);
 
-  // Sends avalonia:ready once after mount so the host can hide its loading overlay.
-  useSignalReady({ frontend: "React 19", toolkit: "0.18" });
+  const pushEvent = useCallback((kind: BridgeEventKind, text: string) => {
+    eventId.current += 1;
+    const at = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    setEvents(previous => [...previous.slice(-23), { id: eventId.current, at, kind, text }]);
+  }, []);
 
-  // Hook-based subscriptions replace the manual subscribe/signalReady effects.
-  useAvaloniaMessage<ReactAck>("react:ack", ({ at }) => setAck(at));
+  useSignalReady({ frontend: "React 19", toolkit: APP_VERSION });
 
-  // The native toolbar's "宿主 → React" button invokes this handler.
-  useReactHandler<string>(
-    "host:greet",
-    from => `React 已响应「${from}」，当前主题：${theme ?? "unknown"}`,
-  );
+  useAvaloniaMessage<ReactAck>("react:ack", ({ at }) => {
+    pushEvent("ack", "宿主回执 " + at + " · 原生状态栏已更新");
+  });
+
+  useReactHandler<string>("host:greet", from => {
+    const response = "React 已响应「" + from + "」，当前主题：" + (theme ?? "unknown");
+    pushEvent("host", "宿主调用 host:greet → " + response);
+    return response;
+  });
 
   useEffect(() => {
-    void greeting.invoke("Semi Design");
-    void snapshot.invoke();
+    if (!bridgeAvailable) {
+      return;
+    }
+    void greeting.invoke("AvaloniaWebview.React").catch(() => undefined);
+    void snapshot.invoke().catch(() => undefined);
+  }, [bridgeAvailable]);
+
+  useEffect(() => {
+    const applied = document.documentElement.dataset.theme;
+    if (applied === "light" || applied === "dark") {
+      setSystemTheme(applied);
+    }
   }, []);
 
   useEffect(() => {
@@ -69,137 +103,200 @@ export default function App() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const incrementSharedCounter = () => {
+  const navigate = useCallback((next: ViewKey) => setView(next), []);
+
+  const refreshAll = useCallback(() => {
+    runtimeMetrics.refresh();
+    if (bridgeAvailable) {
+      void snapshot.invoke().catch(() => undefined);
+    }
+  }, [runtimeMetrics, snapshot, bridgeAvailable]);
+
+  const invokeGreeting = useCallback(() => {
+    if (!bridgeAvailable) {
+      pushEvent("note", "浏览器预览：启动 Avalonia 宿主后才能调用 C# HostApi。");
+      return;
+    }
+    void greeting
+      .invoke("AvaloniaWebview.React")
+      .then(result => pushEvent("call", "useHostApiInvoke.getGreeting → " + result))
+      .catch(reason => pushEvent("note", "问候调用失败：" + errorMessage(reason)));
+  }, [bridgeAvailable, greeting, pushEvent]);
+
+  const callProxy = useCallback(async () => {
+    if (!bridgeAvailable) {
+      pushEvent("note", "浏览器预览：启动 Avalonia 宿主后才能调用 C# HostApi。");
+      return;
+    }
+    try {
+      const result = await hostApi.getGreeting("useHostApi");
+      setProxyGreeting(result);
+      pushEvent("call", "useHostApi.getGreeting → " + result);
+    } catch (reason) {
+      const message = errorMessage(reason);
+      setProxyGreeting(message);
+      pushEvent("note", "代理调用失败：" + message);
+    }
+  }, [bridgeAvailable, hostApi, pushEvent]);
+
+  const sendMessageToHost = useCallback(() => {
+    if (!bridgeAvailable) {
+      pushEvent("note", "浏览器预览：消息未发送，启动宿主后即可看到往返。");
+      return;
+    }
+    try {
+      postMessage("react:clicked", { at: new Date().toISOString() });
+      pushEvent("call", "React → .NET · react:clicked");
+    } catch (reason) {
+      pushEvent("note", "消息发送失败：" + errorMessage(reason));
+    }
+  }, [bridgeAvailable, pushEvent]);
+
+  const incrementShared = useCallback(() => {
     setSharedCount(current => {
       const next = current + 1;
       try {
         window.localStorage.setItem(SHARED_COUNTER_KEY, String(next));
       } catch {
-        // Storage can be disabled in private/ephemeral windows.
+        // Storage can be disabled in private or ephemeral windows.
       }
       return next;
     });
-  };
+  }, []);
 
-  const callProxy = async () => {
-    try {
-      setDirectGreeting(await hostApi.getGreeting("useHostApi"));
-    } catch (error) {
-      setDirectGreeting(error instanceof Error ? error.message : String(error));
-    }
-  };
+  const clearEvents = useCallback(() => setEvents([]), []);
 
-  const snapshotHealth = snapshot.data?.health;
-  const snapshotTagColor = snapshotHealth === "healthy" ? "green" : "orange";
+  const effectiveTheme = theme ?? systemTheme;
+  const themeLabel =
+    effectiveTheme === "dark" ? "深色" : effectiveTheme === "light" ? "浅色" : bridgeAvailable ? "同步中" : "跟随系统";
 
   return (
     <Layout className="app-shell">
       <Sider className="app-sider">
-        <div className="brand"><Avatar color="blue" size="small">A</Avatar><span>Avalonia React</span></div>
-        <Nav defaultSelectedKeys={["overview"]} items={[
-          { itemKey: "overview", text: "工作台" },
-          { itemKey: "services", text: "服务状态" },
-          { itemKey: "settings", text: "设置" },
-        ]} />
+        <div className="brand">
+          <Avatar color="blue" size="small">
+            A
+          </Avatar>
+          <div className="brand-copy">
+            <Text strong>Avalonia · React</Text>
+            <Text className="brand-sub" type="tertiary" size="small">
+              Hybrid Workbench
+            </Text>
+          </div>
+        </div>
+
+        <Nav
+          className="app-nav"
+          selectedKeys={[view]}
+          items={NAV_ITEMS}
+          onSelect={({ itemKey }) => setView(itemKey as ViewKey)}
+        />
+
+        <div className="sider-footer">
+          <Text strong type="tertiary" size="small">
+            连接状态
+          </Text>
+          <div className="sider-row">
+            <Text type="tertiary" size="small">
+              桥接
+            </Text>
+            <Tag size="small" color={bridgeAvailable ? "green" : "grey"}>
+              {bridgeAvailable ? "已连接" : "浏览器预览"}
+            </Tag>
+          </div>
+          <div className="sider-row">
+            <Text type="tertiary" size="small">
+              主题
+            </Text>
+            <Text size="small">{themeLabel}</Text>
+          </div>
+          <div className="sider-row">
+            <Text type="tertiary" size="small">
+              采样
+            </Text>
+            <Text size="small">{runtimeMetrics.source === "host" ? "2s · 宿主" : "2s · 预览"}</Text>
+          </div>
+          <Text type="tertiary" size="small">
+            AvaloniaWebview.React {APP_VERSION}
+          </Text>
+        </div>
       </Sider>
+
       <Layout>
         <Header className="app-header">
-          <Text type="tertiary">桌面应用 / 工作台</Text>
-          <Space>
-            <Tag color={bridgeAvailable ? "green" : "grey"}>
+          <div className="breadcrumb">
+            <Text type="tertiary" size="small">
+              工作台
+            </Text>
+            <Text type="tertiary" size="small">
+              /
+            </Text>
+            <Text strong size="small">
+              {VIEW_META[view].title}
+            </Text>
+          </div>
+          <Space align="center">
+            <Tag size="small" color={bridgeAvailable ? "green" : "grey"}>
               {bridgeAvailable ? "Avalonia WebView" : "浏览器预览"}
             </Tag>
-            <Tag color="blue">主题：{theme ?? "unknown"}</Tag>
-            <Avatar color="orange" size="small">AR</Avatar>
+            <Text type="tertiary" size="small">
+              {themeLabel}
+            </Text>
+            <Avatar size="small" color="orange">
+              AR
+            </Avatar>
           </Space>
         </Header>
+
         <Content className="app-content">
-          <div className="page-heading">
-            <div>
-              <Text type="tertiary">DEVELOPER TOOLKIT · 0.18</Text>
-              <Title heading={3}>联合开发控制台</Title>
-              <Text type="tertiary">
-                {greeting.loading
-                  ? "正在连接 Avalonia 宿主…"
-                  : greeting.error
-                    ? `宿主 API 错误：${greeting.error.message}`
-                    : greeting.data ?? "等待 Avalonia 宿主连接…"}
+          <div className="page">
+            {view === "overview" ? (
+              <OverviewView
+                metrics={runtimeMetrics.metrics}
+                source={runtimeMetrics.source}
+                metricsError={runtimeMetrics.error}
+                greeting={greeting}
+                snapshot={snapshot}
+                bridgeAvailable={bridgeAvailable}
+                proxyGreeting={proxyGreeting}
+                ackText={events.find(event => event.kind === "ack")?.text ?? null}
+                onRefresh={refreshAll}
+                onGreeting={invokeGreeting}
+                onProxyCall={() => void callProxy()}
+                onSendMessage={sendMessageToHost}
+                onNavigate={navigate}
+              />
+            ) : null}
+
+            {view === "playground" ? (
+              <PlaygroundView
+                bridgeAvailable={bridgeAvailable}
+                themeLabel={themeLabel}
+                greeting={greeting}
+                snapshot={snapshot}
+                events={events}
+                proxyGreeting={proxyGreeting}
+                sharedCount={sharedCount}
+                onGreeting={invokeGreeting}
+                onProxyCall={() => void callProxy()}
+                onSendMessage={sendMessageToHost}
+                onRefreshSnapshot={() => void snapshot.invoke().catch(() => undefined)}
+                onIncrementShared={incrementShared}
+                onClearEvents={clearEvents}
+              />
+            ) : null}
+
+            {view === "about" ? <AboutView /> : null}
+
+            <footer className="page-footer">
+              <Text type="tertiary" size="small">
+                AvaloniaWebview.React {APP_VERSION} · 数据来自 IHostApi · 每 2 秒采样
               </Text>
-            </div>
-            <Space>
-              <Button onClick={() => setClicks(value => value + 1)}>React 点击：{clicks}</Button>
-              <Button onClick={() => void greeting.invoke("Semi Design")}>useHostApiInvoke</Button>
-              <Button theme="solid" type="primary" onClick={() => postMessage("react:clicked", { at: new Date().toISOString() })}>
-                发送消息到 .NET
-              </Button>
-            </Space>
+              <Text type="tertiary" size="small">
+                {bridgeAvailable ? "运行于 Avalonia NativeWebView" : "浏览器预览 · 启动宿主获取真实指标"}
+              </Text>
+            </footer>
           </div>
-
-          <Row gutter={16} className="stats-row">
-            <Col span={8}><Card><Text type="tertiary">宿主框架</Text><Title heading={4}>Avalonia 12</Title></Card></Col>
-            <Col span={8}><Card><Text type="tertiary">前端框架</Text><Title heading={4}>React 19 Hooks</Title></Card></Col>
-            <Col span={8}><Card><Text type="tertiary">UI 组件库</Text><Title heading={4}>Semi Design</Title></Card></Col>
-          </Row>
-
-          <Card
-            title="运行时快照（DTO / 枚举 / 列表）"
-            className="service-card"
-            headerExtraContent={snapshotHealth ? <Tag color={snapshotTagColor}>{snapshotHealth}</Tag> : undefined}
-          >
-            {snapshot.loading && <Text type="tertiary">正在读取 .NET 运行时快照…</Text>}
-            {snapshot.error && <Text type="danger">{snapshot.error.message}</Text>}
-            {snapshot.data && (
-              <Space vertical align="start">
-                <Text>宿主：{snapshot.data.host}</Text>
-                <Text>WebView：{snapshot.data.webView}</Text>
-                <Space>
-                  {snapshot.data.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
-                </Space>
-                <Button size="small" onClick={() => void snapshot.invoke()}>刷新快照</Button>
-              </Space>
-            )}
-          </Card>
-
-          <Card title="本地开发服务" className="service-card" headerExtraContent={<Tag color="green">全部正常</Tag>}>
-            {showServiceDetails
-              ? <Suspense fallback={null}><ServiceTable /></Suspense>
-              : <Button theme="borderless" onClick={() => setShowServiceDetails(true)}>查看服务明细</Button>}
-          </Card>
-
-          <Row gutter={16} className="bridge-card">
-            <Col span={14}>
-              <Card title="原生桥与 Hooks">
-                <Space vertical align="start">
-                  <Text>React 与 Avalonia 通过 JSON 消息双向通信。</Text>
-                  <Text type="tertiary">
-                    useHostApiInvoke 由 React hook 管状态；useHostApi 返回稳定的代理对象。
-                  </Text>
-                  {greeting.data && <Text>Hook 问候：{greeting.data}</Text>}
-                  {greeting.error && <Text type="danger">Hook 错误：{greeting.error.message}</Text>}
-                  <Space>
-                    <Button size="small" onClick={() => void callProxy()}>useHostApi 代理调用</Button>
-                    {directGreeting && <Text type="tertiary">{directGreeting}</Text>}
-                  </Space>
-                  {ack && <Text type="tertiary">宿主回执：{ack}</Text>}
-                  <Text type="tertiary">
-                    点击原生工具栏的“宿主 → React”，.NET 会调用 useReactHandler 注册的处理器。
-                  </Text>
-                </Space>
-              </Card>
-            </Col>
-            <Col span={10}>
-              <Card title="共享浏览器存储">
-                <Space vertical align="start">
-                  <Text>
-                    此计数保存在 localStorage。默认共享 session 的窗口读取同一份数据；
-                    隔离窗口使用 ephemeral session。
-                  </Text>
-                  <Title heading={4}>{sharedCount}</Title>
-                  <Button onClick={incrementSharedCounter}>共享计数 +1</Button>
-                </Space>
-              </Card>
-            </Col>
-          </Row>
         </Content>
       </Layout>
     </Layout>

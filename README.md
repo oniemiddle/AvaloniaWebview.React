@@ -393,18 +393,21 @@ dotnet run --project samples/ReactHost -f net10.0-windows
 dotnet run --project samples/ReactHost -f net10.0
 ```
 
-The sample now demonstrates the 0.18 feature set end to end:
+The sample is a small desktop "hybrid workbench" that exercises the 0.19 feature set end to end. It has three React views (运行概览, 桥接实验, 关于示例) arranged in a Semi Design sidebar layout, and the same page still renders labelled browser values when it runs outside Avalonia.
 
-- **React hooks** — `App.tsx` uses `useSignalReady`, `useAvaloniaMessage`, `useHostTheme`, `useBridgeAvailable`, `useHostApi`, `useHostApiInvoke`, and `useReactHandler`; `main.tsx` only handles the pre-render theme so the initial paint matches the host.
+- **Live host metrics** — `FrontendApi.d.ts` declares `RuntimeMetrics` and `HostApi.getRuntimeMetrics()`. The dashboard polls it every two seconds and renders working set, GC heap, thread count, uptime, and the platform details card; `SampleHostApi` collects them with BCL APIs only.
+- **Generated DTO/enum/list JSON** — `RuntimeSnapshot`, `ServiceHealth`, `RuntimeMetrics`, and `ReactAck` are generated from the same contract, so both the typed host API and the React-to-host acknowledgment stay AOT-safe without a handwritten `JsonSerializerContext`.
+- **React hooks** — `App.tsx` uses `useSignalReady`, `useAvaloniaMessage`, `useHostTheme`, `useBridgeAvailable`, `useHostApi`, `useHostApiInvoke`, and `useReactHandler`; `main.tsx` only handles the pre-render theme so the initial paint matches the host. The dashboard adds one polling hook of its own on top of the generated proxy.
 - **Host → React** — the native toolbar's "宿主 → React" button calls `InvokeReactAsync<string>("host:greet", ...)`; the React side handles it with `useReactHandler` and returns a string to the host status bar.
-- **Generated DTO/enum/list JSON** — `FrontendApi.d.ts` defines `RuntimeSnapshot`, `ServiceHealth`, and `getRuntimeSnapshot()`. The React "运行时快照" card renders the generated DTO, string enum, and string list; no handwritten `JsonSerializerContext` is needed.
-- **Multi-window** — "打开共享窗口" creates another `MainWindow` using `ReactWebViewSession.Shared` and the shared loopback asset server; the localStorage counter is shared between those windows. "打开隔离窗口" uses `ReactWebViewSession.CreateEphemeral()` and starts with its own storage.
-- **Runtime preflight** — the top status bar shows `ReactWebViewAvailability.Check()` output (engine, version, adapter), and the generated snapshot reports the same runtime information.
-- **Resource cleanup** — "清理浏览器存储" calls `ClearBrowserDataAsync(ReactWebViewDataKind.BrowserStorage)` and reports cleared/failed groups.
+- **Bridge playground** — 桥接实验 combines the Hook call, the stable `useHostApi` proxy, a `postMessage` round trip with `react:ack`, and an event stream that records each path.
+- **Multi-window** — the native toolbar's shared window creates another `MainWindow` using `ReactWebViewSession.Shared` and the shared loopback asset server; the localStorage counter is shared between those windows. The isolated window uses `ReactWebViewSession.CreateEphemeral()` and starts with its own storage.
+- **Runtime preflight** — the host status line shows `ReactWebViewAvailability.Check()` output (engine, version, adapter), and the generated snapshot reports the same runtime information.
+- **Resource cleanup** — "清理存储" calls `ClearBrowserDataAsync(ReactWebViewDataKind.BrowserStorage)` and reports cleared/failed groups.
 - **Reparenting** — `ReactHostView` still preserves the native WebView across detach/attach by default.
+- **Lazy module and component library** — 本地开发服务 is a `React.lazy` chunk that is downloaded only when the details are expanded; it renders a Semi Design table inside the dashboard.
+- **Browser preview fallback** — when `window.invokeCSharpAction` is unavailable the dashboard falls back to browser-derived values, labels itself 浏览器预览, and switches to real .NET metrics as soon as the Avalonia host connects.
 
-The service table is a separate dynamic module loaded only when requested. The "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
-
+Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the native chrome, overlay, and React UI follow the same light/dark theme.
 ### Publish the sample with Native AOT
 
 The Windows sample also publishes as a self-contained Native AOT executable. Besides the .NET 10 SDK, Native AOT needs the MSVC linker from Visual Studio's "Desktop development with C++" workload and the Windows 10/11 SDK libraries (`kernel32.lib` and friends):

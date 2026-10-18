@@ -2,43 +2,100 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:react="using:AvaloniaWebview.React"
         x:Class="ReactHost.MainWindow"
-        Title="Avalonia + React"
-        Width="1100"
-        Height="760"
+        Icon="/Assets/app.ico"
+        Title="Avalonia + React · 混合桌面工作台"
+        Width="1280"
+        Height="860"
+        MinWidth="1080"
+        MinHeight="720"
+        WindowStartupLocation="CenterScreen"
         Background="{DynamicResource SemiColorBackground0}">
   <DockPanel>
-    <!-- Native toolbar: demonstrates host-to-React calls, shared sessions and runtime preflight. -->
+    <!-- Native chrome: brand, live host status and the four demo actions. Everything below the
+         slim bar is the React dashboard rendered by ReactHostView. -->
     <Border DockPanel.Dock="Top"
-            Padding="18,12"
+            Height="58"
+            Padding="16,0"
             Background="{DynamicResource SemiColorBackground1}"
             BorderBrush="{DynamicResource SemiColorBorder}"
             BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Spacing="4">
-          <TextBlock Text="AvaloniaWebview.React 0.18 功能演示"
-                     FontSize="15"
-                     FontWeight="SemiBold" />
-          <TextBlock x:Name="HostStatusText"
-                     Text="正在检查 WebView 运行时…"
-                     FontSize="12"
-                     Opacity="0.72"
-                     TextWrapping="Wrap" />
-        </StackPanel>
+      <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+        <!-- Brand mark -->
+        <Border Width="32"
+                Height="32"
+                CornerRadius="10"
+                Background="{DynamicResource SemiColorPrimaryLight}">
+          <TextBlock Text="A"
+                     FontSize="16"
+                     FontWeight="Bold"
+                     Foreground="{DynamicResource SemiColorPrimary}"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center" />
+        </Border>
+
         <StackPanel Grid.Column="1"
+                    Margin="11,0,16,0"
+                    VerticalAlignment="Center"
+                    Spacing="3">
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <TextBlock Text="AvaloniaWebview.React"
+                       FontSize="13.5"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource SemiColorText0}"
+                       VerticalAlignment="Center" />
+            <Border CornerRadius="6"
+                    Padding="6,1"
+                    Background="{DynamicResource SemiColorFill0}"
+                    VerticalAlignment="Center">
+              <TextBlock x:Name="VersionPillText"
+                         FontSize="10"
+                         Opacity="0.7"
+                         VerticalAlignment="Center" />
+            </Border>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+            <Ellipse x:Name="RuntimeStateDot"
+                     Width="6"
+                     Height="6"
+                     Fill="{DynamicResource SemiColorPrimary}"
+                     VerticalAlignment="Center" />
+            <TextBlock x:Name="HostStatusText"
+                       Text="正在检查 WebView 运行时…"
+                       FontSize="11.5"
+                       Opacity="0.7"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Compact demo actions; the handlers are hosted in MainWindow.axaml.cs. -->
+        <StackPanel Grid.Column="2"
                     Orientation="Horizontal"
                     Spacing="8"
                     VerticalAlignment="Center">
+          <Border Width="1"
+                  Height="20"
+                  Margin="0,0,6,0"
+                  Background="{DynamicResource SemiColorBorder}" />
           <Button x:Name="HostGreetButton"
                   Content="宿主 → React"
+                  FontSize="12"
+                  Padding="12,5"
                   Click="HandleHostGreetClick" />
           <Button x:Name="ClearDataButton"
-                  Content="清理浏览器存储"
+                  Content="清理存储"
+                  FontSize="12"
+                  Padding="12,5"
                   Click="HandleClearBrowserDataClick" />
           <Button x:Name="SecondWindowButton"
-                  Content="打开共享窗口"
+                  Content="共享窗口"
+                  FontSize="12"
+                  Padding="12,5"
                   Click="HandleOpenSecondWindowClick" />
           <Button x:Name="IsolatedWindowButton"
-                  Content="打开隔离窗口"
+                  Content="隔离窗口"
+                  FontSize="12"
+                  Padding="12,5"
                   Click="HandleOpenIsolatedWindowClick" />
         </StackPanel>
       </Grid>
@@ -51,7 +108,7 @@
                          SourceMode="Auto"
                          WaitForBridgeReady="True"
                          BridgeReadyTimeout="0:0:10"
-                         LoadingText="正在启动 Avalonia + React…"
+                         LoadingText="正在启动 Avalonia + React 工作台…"
                          RetryText="重试加载"
                          ErrorTextFormat="页面加载失败：{0}"
                          MessageReceived="HandleMessageReceived"

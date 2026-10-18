@@ -16,6 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Semi.Avalonia" Version="12.1.0.1" />
     <ProjectReference Include="..\..\src\AvaloniaWebview.React\AvaloniaWebview.React.csproj" />
