@@ -290,7 +290,7 @@ Build all three NuGet packages with `dotnet pack src/Avalonia.React/Avalonia.Rea
 ## Build and test
 
 ```sh
-dotnet build Avalonia.React.sln -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
+dotnet build Avalonia.React.slnx -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
 dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
 dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
 npm --prefix client run build
