@@ -24,6 +24,7 @@ public sealed class ReactHostView : Grid, IDisposable
     private readonly TextBlock _statusText;
     private readonly Button _retryButton;
     private readonly DispatcherTimer _readyTimer;
+    private readonly DispatcherTimer _adapterTimer;
     private bool _overlayTimedOut;
     private string? _runtimeError;
 
@@ -83,6 +84,8 @@ public sealed class ReactHostView : Grid, IDisposable
 
         _readyTimer = new DispatcherTimer { Interval = BridgeReadyTimeout };
         _readyTimer.Tick += HandleReadyTimeout;
+        _adapterTimer = new DispatcherTimer { Interval = AdapterStartupTimeout };
+        _adapterTimer.Tick += HandleAdapterTimeout;
 
         WebView.LoadStateChanged += HandleLoadStateChanged;
         WebView.BridgeReady += HandleBridgeReady;
@@ -102,6 +105,7 @@ public sealed class ReactHostView : Grid, IDisposable
     public void Shutdown()
     {
         _readyTimer.Stop();
+        _adapterTimer.Stop();
         _runtimeError = null;
         WebView.Shutdown();
         _overlay.IsVisible = false;
@@ -179,6 +183,16 @@ public sealed class ReactHostView : Grid, IDisposable
     /// <summary>Gets the additional origins allowed to navigate inside the WebView.</summary>
     public IList<Uri> AllowedOrigins => WebView.AllowedOrigins;
 
+    /// <summary>Gets the additional page origins allowed to invoke registered host APIs.</summary>
+    public IList<Uri> TrustedApiOrigins => WebView.TrustedApiOrigins;
+
+    /// <summary>Gets or sets the maximum incoming bridge message size in UTF-16 characters.</summary>
+    public int MaxIncomingMessageCharacters
+    {
+        get => WebView.MaxIncomingMessageCharacters;
+        set => WebView.MaxIncomingMessageCharacters = value;
+    }
+
     /// <summary>Gets the current page lifecycle state.</summary>
     public ReactLoadState LoadState => WebView.LoadState;
 
@@ -235,6 +249,13 @@ public sealed class ReactHostView : Grid, IDisposable
     /// </summary>
     public TimeSpan BridgeReadyTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// Gets or sets how long the host waits for the native WebView adapter to initialize before
+    /// showing a runtime-availability error. Defaults to 10 seconds; set to <see cref="TimeSpan.Zero"/>
+    /// to disable the watchdog.
+    /// </summary>
+    public TimeSpan AdapterStartupTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
     /// <summary>Gets or sets the loading message. Defaults to <c>Loading React…</c>.</summary>
     public string LoadingText { get; set; } = "Loading React…";
 
@@ -286,6 +307,13 @@ public sealed class ReactHostView : Grid, IDisposable
     {
         add => WebView.JavaScriptError += value;
         remove => WebView.JavaScriptError -= value;
+    }
+
+    /// <summary>Raised when a bridge request is rejected by the host security boundary.</summary>
+    public event EventHandler<ReactSecurityViolationEventArgs>? SecurityViolation
+    {
+        add => WebView.SecurityViolation += value;
+        remove => WebView.SecurityViolation -= value;
     }
 
     /// <summary>Registers an implementation of a generated API contract.</summary>
@@ -362,12 +390,48 @@ public sealed class ReactHostView : Grid, IDisposable
 
     private void HandleAdapterCreated(object? sender, WebViewAdapterEventArgs args)
     {
+        _adapterTimer.Stop();
         var reason = ReactAdapterDiagnostics.GetUnavailableReason(WebView.GetAdapterDiagnostics());
         if (!string.Equals(_runtimeError, reason, StringComparison.Ordinal))
         {
             _runtimeError = reason;
             UpdateOverlay();
         }
+    }
+
+    private void StartAdapterWatchdog()
+    {
+        if (WebView.IsShutdown || AdapterStartupTimeout <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        if (WebView.LoadState == ReactLoadState.Loaded || WebView.IsBridgeReady)
+        {
+            return;
+        }
+
+        var diagnostics = WebView.GetAdapterDiagnostics();
+        if (diagnostics is { IsInstalled: true, IsSupported: true })
+        {
+            return;
+        }
+
+        _adapterTimer.Interval = AdapterStartupTimeout;
+        _adapterTimer.Start();
+    }
+
+    private void HandleAdapterTimeout(object? sender, EventArgs args)
+    {
+        _adapterTimer.Stop();
+        if (WebView.IsShutdown || WebView.LoadState == ReactLoadState.Loaded || WebView.IsBridgeReady)
+        {
+            return;
+        }
+
+        _runtimeError = ReactAdapterDiagnostics.GetUnavailableReason(WebView.GetAdapterDiagnostics())
+            ?? "The WebView runtime did not initialize. Verify that the platform WebView runtime is installed.";
+        UpdateOverlay();
     }
 
     private void HandleLoadStateChanged(object? sender, ReactLoadStateChangedEventArgs args)
@@ -424,6 +488,14 @@ public sealed class ReactHostView : Grid, IDisposable
         base.OnAttachedToVisualTree(e);
         ApplyOverlayTheme();
         UpdateOverlay();
+        StartAdapterWatchdog();
+    }
+
+    /// <inheritdoc />
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _adapterTimer.Stop();
+        base.OnDetachedFromVisualTree(e);
     }
 
     private void ApplyOverlayTheme()

@@ -22,11 +22,13 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private readonly Dictionary<string, CancellationTokenSource> _pendingInvocations = new(StringComparer.Ordinal);
     private readonly ReactMessageQueue _messageQueue = new();
     private readonly List<Uri> _allowedOrigins = [];
+    private readonly List<Uri> _trustedApiOrigins = [];
     private IAssetTransport? _assetTransport;
     private EmbeddedAssetOptions? _embeddedAssetOptions;
     private bool _embeddedAssetsEnabled;
     private Window? _assetServerWindow;
     private Uri? _navigationOrigin;
+    private Uri? _currentNavigationOrigin;
     private bool _sourceConfigured;
     private bool _bridgeReady;
     private bool _isShutdown;
@@ -68,6 +70,9 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     /// <summary>Raised when the React client forwards a window error or an unhandled promise rejection.</summary>
     public event EventHandler<ReactJavaScriptErrorEventArgs>? JavaScriptError;
+
+    /// <summary>Raised when a bridge request is rejected by the host security boundary.</summary>
+    public event EventHandler<ReactSecurityViolationEventArgs>? SecurityViolation;
 
     /// <summary>Gets the current page lifecycle state.</summary>
     public ReactLoadState LoadState => _loadState;
@@ -160,6 +165,13 @@ public sealed class AvaloniaReactWebView : NativeWebView
     public int MaxQueuedBridgeMessages { get; set; } = 1024;
 
     /// <summary>
+    /// Gets or sets the maximum size, in UTF-16 characters, of an incoming bridge message.
+    /// Larger messages are dropped and reported through <see cref="SecurityViolation"/>.
+    /// Defaults to 4,000,000 characters.
+    /// </summary>
+    public int MaxIncomingMessageCharacters { get; set; } = 4_000_000;
+
+    /// <summary>
     /// Gets or sets how long a host API implementation may run before the caller receives a timeout
     /// error. Defaults to 30 seconds; set to <see cref="TimeSpan.Zero"/> to disable the timeout.
     /// </summary>
@@ -170,6 +182,13 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <see cref="ExternalNavigationPolicy"/> is not <see cref="ReactExternalNavigationPolicy.Allow"/>.
     /// </summary>
     public IList<Uri> AllowedOrigins => _allowedOrigins;
+
+    /// <summary>
+    /// Gets the additional page origins that may invoke registered host APIs. The application origin
+    /// (the first successful navigation) is trusted automatically. Origins listed in
+    /// <see cref="AllowedOrigins"/> are not trusted for API calls unless they are also added here.
+    /// </summary>
+    public IList<Uri> TrustedApiOrigins => _trustedApiOrigins;
 
     /// <summary>
     /// Starts serving a published frontend from the local asset directory and navigates the WebView to it.
@@ -639,6 +658,17 @@ public sealed class AvaloniaReactWebView : NativeWebView
             return;
         }
 
+        if (!ReactUriPolicy.IsAllowedNavigation(request))
+        {
+            // Never let javascript:, data:, file:, or other non-HTTP schemes replace the app page,
+            // even when ExternalNavigationPolicy allows external HTTP navigation.
+            RaiseSecurityViolation(
+                "Blocked a navigation to a non-HTTP scheme.",
+                ReactUriPolicy.GetOrigin(request));
+            args.Cancel = true;
+            return;
+        }
+
         if (ExternalNavigationPolicy != ReactExternalNavigationPolicy.Allow && !IsInternalNavigation(request))
         {
             if (ExternalNavigationPolicy == ReactExternalNavigationPolicy.OpenInSystemBrowser)
@@ -720,9 +750,15 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     private bool IsInternalNavigation(Uri request)
     {
+        if (ReactUriPolicy.IsAboutBlank(request))
+        {
+            _currentNavigationOrigin = null;
+            return true;
+        }
+
         if (!ReactUriPolicy.IsHttp(request))
         {
-            return true;
+            return false;
         }
 
         if (_navigationOrigin is null)
@@ -748,9 +784,53 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     private void RememberNavigationOrigin(Uri request)
     {
-        if (_navigationOrigin is null && ReactUriPolicy.IsHttp(request))
+        if (!ReactUriPolicy.IsHttp(request))
         {
-            _navigationOrigin = ReactUriPolicy.GetOrigin(request);
+            return;
+        }
+
+        _currentNavigationOrigin = ReactUriPolicy.GetOrigin(request);
+        _navigationOrigin ??= _currentNavigationOrigin;
+    }
+
+    private bool IsHostApiOriginTrusted(out Uri? pageOrigin)
+    {
+        var sourceOrigin = ReactUriPolicy.GetOrigin(Source);
+        pageOrigin = sourceOrigin ?? _currentNavigationOrigin;
+        if (sourceOrigin is null ||
+            !ReactUriPolicy.IsTrustedApiOrigin(sourceOrigin, _navigationOrigin, _trustedApiOrigins))
+        {
+            return false;
+        }
+
+        if (_currentNavigationOrigin is not null &&
+            !ReactUriPolicy.IsTrustedApiOrigin(_currentNavigationOrigin, _navigationOrigin, _trustedApiOrigins))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void RaiseSecurityViolation(
+        string reason,
+        Uri? origin,
+        string? apiName = null,
+        string? methodName = null)
+    {
+        var handler = SecurityViolation;
+        if (handler is null)
+        {
+            return;
+        }
+
+        try
+        {
+            handler(this, new ReactSecurityViolationEventArgs(reason, origin, apiName, methodName));
+        }
+        catch (Exception)
+        {
+            // A security telemetry subscriber must not break navigation or message handling.
         }
     }
 
@@ -912,6 +992,16 @@ public sealed class AvaloniaReactWebView : NativeWebView
             return;
         }
 
+        if (MaxIncomingMessageCharacters > 0 &&
+            args.Body is { Length: > 0 } body &&
+            body.Length > MaxIncomingMessageCharacters)
+        {
+            RaiseSecurityViolation(
+                $"Incoming bridge message exceeded {MaxIncomingMessageCharacters} characters.",
+                ReactUriPolicy.GetOrigin(Source));
+            return;
+        }
+
         if (!ReactBridgeProtocol.TryParse(args.Body, out var messageType, out var payload))
         {
             return;
@@ -1029,6 +1119,13 @@ public sealed class AvaloniaReactWebView : NativeWebView
         {
             var apiName = payload.GetProperty("api").GetString() ?? throw new InvalidOperationException("API name is missing.");
             var methodName = payload.GetProperty("method").GetString() ?? throw new InvalidOperationException("Method name is missing.");
+            if (!IsHostApiOriginTrusted(out var pageOrigin))
+            {
+                const string reason = "Host API calls are not allowed from this page origin.";
+                RaiseSecurityViolation(reason, pageOrigin, apiName, methodName);
+                throw new InvalidOperationException(reason);
+            }
+
             var jsonArguments = payload.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Array
                 ? argsElement.EnumerateArray().ToArray()
                 : Array.Empty<JsonElement>();

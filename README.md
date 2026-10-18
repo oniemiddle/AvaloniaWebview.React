@@ -147,6 +147,10 @@ webView.Reload();
 - `JavaScriptError` receives window errors and unhandled promise rejections forwarded by the bridge client, including message, stack, source, line, and column.
 - `ApiInvokeTimeout` (30 seconds by default) returns a timeout error to React when a host API implementation runs too long; set it to `TimeSpan.Zero` to disable.
 - `RegisterApi` rejects duplicate API names; `UnregisterApi` removes one.
+- Host APIs are origin-gated. The initial application origin is trusted automatically; add additional page origins to `TrustedApiOrigins`. `AllowedOrigins` only grants navigation, not host API access. Requests from other origins are rejected with a `SecurityViolation` event and an error returned to React.
+- Main-frame navigation to non-HTTP schemes (`javascript:`, `data:`, `file:`, and similar) is always cancelled, even when `ExternalNavigationPolicy="Allow"`. Only HTTP(S) and `about:blank` are allowed.
+- `MaxIncomingMessageCharacters` (4,000,000 by default) drops oversized bridge messages and reports them through `SecurityViolation`. Set it to `0` or a negative value to disable the limit.
+- `ReactHostView.AdapterStartupTimeout` (10 seconds by default) shows a runtime-availability error if the native adapter never initializes. `AdapterDiagnostics`, `IsWebViewRuntimeInstalled`, and `WebViewUnavailableReason` expose the platform runtime state.
 
 ### Multi-window and reparenting
 

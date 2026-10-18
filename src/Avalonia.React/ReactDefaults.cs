@@ -116,4 +116,51 @@ internal static class ReactUriPolicy
         IsHttp(left) &&
         IsHttp(right) &&
         string.Equals(left.GetLeftPart(UriPartial.Authority), right.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsAboutBlank(Uri uri) =>
+        uri.IsAbsoluteUri &&
+        string.Equals(uri.Scheme, "about", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(uri.AbsolutePath, "blank", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Returns whether a navigation target is allowed to replace the application page. Non-HTTP
+    /// schemes such as <c>javascript:</c>, <c>data:</c>, and <c>file:</c> are never allowed.
+    /// </summary>
+    public static bool IsAllowedNavigation(Uri uri) => IsHttp(uri) || IsAboutBlank(uri);
+
+    /// <summary>
+    /// Returns whether a page origin may invoke registered host APIs. The application origin is
+    /// trusted automatically; additional origins must be configured explicitly.
+    /// </summary>
+    public static bool IsTrustedApiOrigin(
+        Uri? source,
+        Uri? applicationOrigin,
+        IEnumerable<Uri>? additionalOrigins)
+    {
+        var origin = GetOrigin(source);
+        if (origin is null)
+        {
+            return false;
+        }
+
+        if (applicationOrigin is not null && IsSameOrigin(origin, applicationOrigin))
+        {
+            return true;
+        }
+
+        if (additionalOrigins is null)
+        {
+            return false;
+        }
+
+        foreach (var additionalOrigin in additionalOrigins)
+        {
+            if (additionalOrigin is not null && IsSameOrigin(origin, additionalOrigin))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

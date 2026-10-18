@@ -31,4 +31,36 @@ public sealed class ReactUriPolicyTests
         Assert.False(ReactUriPolicy.IsHttp(new Uri("file:///C:/index.html")));
         Assert.False(ReactUriPolicy.IsHttp(new Uri("about:blank")));
     }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:5173/index.html", true)]
+    [InlineData("about:blank", true)]
+    [InlineData("file:///C:/index.html", false)]
+    [InlineData("javascript:alert(1)", false)]
+    [InlineData("data:text/html,hello", false)]
+    public void Only_http_and_blank_about_are_navigable(string value, bool expected) =>
+        Assert.Equal(expected, ReactUriPolicy.IsAllowedNavigation(new Uri(value)));
+
+    [Theory]
+    [InlineData("http://127.0.0.1:5173/page", "http://127.0.0.1:5173", null, true)]
+    [InlineData("http://127.0.0.1:5173/page", "http://127.0.0.1:5173", "https://other.example", true)]
+    [InlineData("https://external.example/page", "http://127.0.0.1:5173", null, false)]
+    [InlineData("https://external.example/page", "http://127.0.0.1:5173", "https://external.example", true)]
+    [InlineData("http://127.0.0.1:5173/page", null, null, false)]
+    [InlineData("file:///C:/index.html", "http://127.0.0.1:5173", null, false)]
+    [InlineData("about:blank", "http://127.0.0.1:5173", null, false)]
+    public void Host_api_origin_must_match_the_application_or_an_explicit_trust_origin(
+        string source,
+        string? applicationOrigin,
+        string? additionalOrigin,
+        bool expected)
+    {
+        var additional = additionalOrigin is null ? null : new[] { new Uri(additionalOrigin) };
+        Assert.Equal(
+            expected,
+            ReactUriPolicy.IsTrustedApiOrigin(
+                new Uri(source),
+                applicationOrigin is null ? null : new Uri(applicationOrigin),
+                additional));
+    }
 }

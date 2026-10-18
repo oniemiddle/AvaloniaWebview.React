@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-10-18
+
+### Added
+
+- Runtime availability watchdog: `ReactHostView.AdapterStartupTimeout` shows a clear error when the
+  native WebView adapter does not initialize, instead of leaving the loading overlay visible forever.
+- Host API origin gating: the application origin is trusted automatically, additional origins can be
+  added to `TrustedApiOrigins`, and rejected calls raise `SecurityViolation` and return an error to
+  React. `AllowedOrigins` remains navigation-only.
+- Non-HTTP main-frame navigation (`javascript:`, `data:`, `file:`, and similar) is always blocked,
+  including when `ExternalNavigationPolicy` is `Allow`; only HTTP(S) and `about:blank` are allowed.
+- `MaxIncomingMessageCharacters` limits bridge message size and reports oversized messages through
+  `SecurityViolation`.
+- `ReactHostView` forwards `TrustedApiOrigins`, `MaxIncomingMessageCharacters`, and
+  `SecurityViolation`; `ReactSecurityViolationEventArgs` carries the origin, API, and method.
+
+### Changed
+
+- Package version is `0.15.0`.
+
+### Documentation
+
+- Documented the origin boundary, navigation-scheme restrictions, message-size limit, and runtime
+  availability watchdog.
+
 ## [0.14.0] - 2026-10-18
 
 ### Added
