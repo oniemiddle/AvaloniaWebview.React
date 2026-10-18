@@ -55,6 +55,8 @@ const greeting = await hostApi.getGreeting("Ada");
 
 The lower-level `invokeHostApi<T>("HostApi", "getGreeting", "Ada")` form remains available.
 
+Host API methods can observe cancellation. Set `<AvaloniaReactGenerateCancellationToken>true</AvaloniaReactGenerateCancellationToken>` in the host project; generated interfaces then append `CancellationToken cancellationToken = default` to every method. The bridge passes a token that is canceled when React aborts or times out a call, when the page navigates or fails to load, and on shutdown. The bridge client sends `avalonia:invoke:cancel` automatically in those cases. The option defaults to `false`, so existing contracts and implementations are unchanged.
+
 ## Host a React development server
 
 Add the control to an Avalonia view. Point it to the Vite development server while developing, or let `SourceMode="Auto"` select the source. The included host uses Vite in Debug and embedded assets in Release; set `Source` or `SourceMode` to override both.
@@ -171,7 +173,7 @@ postMessage("account:changed", { id: 42 });
 
 The Avalonia WebView exposes JavaScript's `invokeCSharpAction` helper. The client uses it to send JSON to .NET. Subscribe after your React app mounts so frontend handlers are ready before the host sends messages. For the initial theme, subscribe in the entry module before rendering.
 
-`avalonia:ready`, `avalonia:invoke`, `avalonia:invoke:result`, `avalonia:error`, `theme`, and `theme:request` are reserved bridge messages handled by the control; application messages must use different names. `MessageReceived` only receives application messages. The first `avalonia:ready` from a page raises `BridgeReady`; use it to dismiss startup UI once React has mounted.
+`avalonia:ready`, `avalonia:invoke`, `avalonia:invoke:result`, `avalonia:invoke:cancel`, `avalonia:error`, `theme`, and `theme:request` are reserved bridge messages handled by the control; application messages must use different names. `MessageReceived` only receives application messages. The first `avalonia:ready` from a page raises `BridgeReady`; use it to dismiss startup UI once React has mounted.
 
 `AvaloniaReactWebView` sends a `theme` message when the WebView's actual theme variant changes and once after every successful navigation. The payload is `{ theme: "light" | "dark" }`: `ThemeVariant.Default` follows the system theme, and custom variants resolve through their inherited variant or fall back to the system theme, so React always receives a semantic value. Send `{ type: "theme:request", payload: {} }` after subscribing to receive the current theme immediately, which is the reliable way to capture the initial value before the first navigation message arrives.
 

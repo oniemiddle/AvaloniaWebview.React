@@ -32,6 +32,7 @@ export const bridgeMessageTypes = {
   ready: "avalonia:ready",
   invoke: "avalonia:invoke",
   invokeResult: "avalonia:invoke:result",
+  invokeCancel: "avalonia:invoke:cancel",
   theme: "theme",
   themeRequest: "theme:request",
   error: "avalonia:error",
@@ -98,6 +99,18 @@ export function subscribe<T>(type: string, listener: (payload: T) => void): () =
 const pendingApiCalls = new Map<string, PendingApiCall>();
 let nextRequestId = 0;
 
+function cancelHostApiCall(requestId: string): void {
+  if (!isBridgeAvailable()) {
+    return;
+  }
+
+  try {
+    postMessage(bridgeMessageTypes.invokeCancel, { requestId });
+  } catch {
+    // The host may already be disposing the page; cancellation is best-effort.
+  }
+}
+
 subscribe<ApiInvocationResult>(bridgeMessageTypes.invokeResult, ({ requestId, result, error }) => {
   const pending = pendingApiCalls.get(requestId);
   if (!pending) return;
@@ -143,6 +156,9 @@ function reportJavaScriptError(
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     const error = new Error("The page unloaded before the host API call completed.");
+    for (const requestId of [...pendingApiCalls.keys()]) {
+      cancelHostApiCall(requestId);
+    }
     for (const pending of [...pendingApiCalls.values()]) {
       pending.reject(error);
     }
@@ -233,7 +249,10 @@ export function invokeHostApiWithOptions<T>(
       resolve(value as T);
     };
 
-    const handleAbort = () => fail(new Error(`The host API call '${api}.${method}' was aborted.`));
+    const handleAbort = () => {
+      cancelHostApiCall(requestId);
+      fail(new Error(`The host API call '${api}.${method}' was aborted.`));
+    };
 
     if (signal?.aborted) {
       fail(new Error(`The host API call '${api}.${method}' was aborted.`));
@@ -241,10 +260,10 @@ export function invokeHostApiWithOptions<T>(
     }
 
     if (timeoutMs !== undefined && timeoutMs > 0) {
-      timer = setTimeout(
-        () => fail(new Error(`The host API call '${api}.${method}' timed out after ${timeoutMs} ms.`)),
-        timeoutMs,
-      );
+      timer = setTimeout(() => {
+        cancelHostApiCall(requestId);
+        fail(new Error(`The host API call '${api}.${method}' timed out after ${timeoutMs} ms.`));
+      }, timeoutMs);
     }
 
     signal?.addEventListener("abort", handleAbort, { once: true });

@@ -14,6 +14,7 @@
     <AvaloniaReactEnableDevTools Condition="'$(AvaloniaReactEnableDevTools)' == '' and '$(Configuration)' == 'Debug'">true</AvaloniaReactEnableDevTools>
     <AvaloniaReactEnableDevTools Condition="'$(AvaloniaReactEnableDevTools)' == ''">false</AvaloniaReactEnableDevTools>
     <AvaloniaReactEmitAssemblyMetadata Condition="'$(AvaloniaReactEmitAssemblyMetadata)' == ''">true</AvaloniaReactEmitAssemblyMetadata>
+    <AvaloniaReactGenerateCancellationToken Condition="'$(AvaloniaReactGenerateCancellationToken)' == ''">false</AvaloniaReactGenerateCancellationToken>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(AvaloniaReactEmitAssemblyMetadata)' == 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">

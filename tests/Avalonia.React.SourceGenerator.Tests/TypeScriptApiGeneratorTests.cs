@@ -3,6 +3,7 @@ using System.Text;
 using Avalonia.React.SourceGenerator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
 
 namespace Avalonia.React.SourceGenerator.Tests;
@@ -206,6 +207,36 @@ public sealed class TypeScriptApiGeneratorTests
     }
 
     [Fact]
+    public void Adds_a_cancellation_token_when_the_build_property_is_enabled()
+    {
+        var run = Generate(
+            """
+            export interface HostApi {
+              getGreeting(name: string): Promise<string>;
+            }
+            """,
+            emitCancellationToken: true);
+
+        var source = run.SingleSource();
+        Assert.Contains(
+            "Task<string> GetGreetingAsync(string name, global::System.Threading.CancellationToken cancellationToken = default);",
+            source);
+        Assert.Empty(run.CompilationErrors());
+    }
+
+    [Fact]
+    public void Omits_the_cancellation_token_by_default()
+    {
+        var source = Generate("""
+            export interface HostApi {
+              getGreeting(name: string): Promise<string>;
+            }
+            """).SingleSource();
+
+        Assert.DoesNotContain("CancellationToken", source);
+    }
+
+    [Fact]
     public void Skips_generic_interfaces_with_a_diagnostic()
     {
         var run = Generate("""
@@ -218,7 +249,12 @@ public sealed class TypeScriptApiGeneratorTests
         Assert.Empty(run.Results.SelectMany(result => result.GeneratedSources));
     }
 
-    private static GenerationRun Generate(params string[] sources)
+    private static GenerationRun Generate(params string[] sources) => Generate(sources, emitCancellationToken: false);
+
+    private static GenerationRun Generate(string source, bool emitCancellationToken) =>
+        Generate(new[] { source }, emitCancellationToken);
+
+    private static GenerationRun Generate(string[] sources, bool emitCancellationToken)
     {
         var files = sources
             .Select((source, index) => (AdditionalText)new InMemoryAdditionalText($"C:\\app\\FrontendApi{index}.d.ts", source))
@@ -232,9 +268,51 @@ public sealed class TypeScriptApiGeneratorTests
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: new[] { new TypeScriptApiGenerator().AsSourceGenerator() },
-            additionalTexts: files);
+            additionalTexts: files,
+            optionsProvider: new TestOptionsProvider(emitCancellationToken));
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out _);
         return new GenerationRun(driver.GetRunResult(), outputCompilation);
+    }
+
+    private sealed class TestOptionsProvider : AnalyzerConfigOptionsProvider
+    {
+        private readonly AnalyzerConfigOptions _options;
+
+        public TestOptionsProvider(bool emitCancellationToken)
+        {
+            _options = new TestOptions(new Dictionary<string, string>
+            {
+                ["build_property.AvaloniaReactGenerateCancellationToken"] = emitCancellationToken ? "true" : "false",
+            });
+        }
+
+        public override AnalyzerConfigOptions GlobalOptions => _options;
+
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _options;
+
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => _options;
+    }
+
+    private sealed class TestOptions : AnalyzerConfigOptions
+    {
+        private readonly IReadOnlyDictionary<string, string> _values;
+
+        public TestOptions(IReadOnlyDictionary<string, string> values)
+        {
+            _values = values;
+        }
+
+        public override bool TryGetValue(string key, out string value)
+        {
+            if (_values.TryGetValue(key, out var found))
+            {
+                value = found;
+                return true;
+            }
+
+            value = string.Empty;
+            return false;
+        }
     }
 
     private sealed class InMemoryAdditionalText : AdditionalText

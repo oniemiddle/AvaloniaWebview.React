@@ -137,33 +137,43 @@ test("createHostApiProxy forwards property calls", async () => {
   assert.equal(await pending, "ok");
 });
 
-test("invokeHostApiWithOptions rejects when the host is too slow", async () => {
+test("invokeHostApiWithOptions rejects when the host is too slow and cancels the call", async () => {
   window.clearMessages();
+  const pending = bridge.invokeHostApiWithOptions("HostApi", "slow", [], { timeoutMs: 10 });
+  const invoke = lastMessage(bridge.bridgeMessageTypes.invoke);
 
-  await assert.rejects(
-    bridge.invokeHostApiWithOptions("HostApi", "slow", [], { timeoutMs: 10 }),
-    /timed out after 10 ms/,
-  );
+  await assert.rejects(pending, /timed out after 10 ms/);
+
+  const cancel = lastMessage(bridge.bridgeMessageTypes.invokeCancel);
+  assert.equal(cancel.payload.requestId, invoke.payload.requestId);
 });
 
-test("invokeHostApiWithOptions honors an aborted signal", async () => {
+test("invokeHostApiWithOptions honors an aborted signal and cancels the call", async () => {
   window.clearMessages();
   const controller = new AbortController();
   const pending = bridge.invokeHostApiWithOptions("HostApi", "slow", [], {
     signal: controller.signal,
   });
+  const invoke = lastMessage(bridge.bridgeMessageTypes.invoke);
 
   controller.abort();
   await assert.rejects(pending, /was aborted/);
+
+  const cancel = lastMessage(bridge.bridgeMessageTypes.invokeCancel);
+  assert.equal(cancel.payload.requestId, invoke.payload.requestId);
 });
 
-test("pagehide rejects pending calls", async () => {
+test("pagehide rejects pending calls and cancels them", async () => {
   window.clearMessages();
   const pending = bridge.invokeHostApi("HostApi", "slow");
+  const invoke = lastMessage(bridge.bridgeMessageTypes.invoke);
 
   window.dispatch("pagehide", {});
 
   await assert.rejects(pending, /page unloaded/);
+
+  const cancel = lastMessage(bridge.bridgeMessageTypes.invokeCancel);
+  assert.equal(cancel.payload.requestId, invoke.payload.requestId);
 });
 
 test("window errors are forwarded as avalonia:error", () => {

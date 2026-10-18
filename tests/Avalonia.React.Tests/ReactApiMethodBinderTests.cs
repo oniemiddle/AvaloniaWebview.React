@@ -36,6 +36,21 @@ public sealed class ReactApiMethodBinderTests
     }
 
     [Fact]
+    public void Injects_the_host_cancellation_token()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var method = typeof(ReactApiMethodBinderTests).GetMethod(
+            nameof(TokenTarget),
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var arguments = new[] { JsonSerializer.SerializeToElement("Ada", JsonSerializerOptions.Web) };
+
+        var bound = ReactApiMethodBinder.Bind(method.GetParameters(), arguments, "TestApi", "token", cancellation.Token);
+
+        Assert.Equal("Ada", bound[0]);
+        Assert.Equal(cancellation.Token, bound[1]);
+    }
+
+    [Fact]
     public void Rejects_a_missing_required_argument()
     {
         var exception = Assert.Throws<InvalidOperationException>(() => Bind());
@@ -63,6 +78,10 @@ public sealed class ReactApiMethodBinderTests
     }
 
     private static void Target(string name, string? title = null, int count = 42)
+    {
+    }
+
+    private static void TokenTarget(string name, CancellationToken cancellationToken = default)
     {
     }
 }

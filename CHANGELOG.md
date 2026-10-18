@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-18
+
+### Added
+
+- Host API cancellation. Setting `AvaloniaReactGenerateCancellationToken=true` appends a trailing
+  `CancellationToken` to every generated interface method; the runtime passes a token that is
+  canceled when React aborts or times out a call, when the page navigates or fails to load, and on
+  shutdown. The option is off by default.
+- The bridge client sends the reserved `avalonia:invoke:cancel` message when a call times out, is
+  aborted, or the page unloads; the host cancels the matching invocation.
+- The runtime tracks pending invocations per request ID and cancels them when navigation starts or
+  fails and when the WebView shuts down. API timeouts now also cancel the implementation token.
+
+### Changed
+
+- Package version is `0.7.0`.
+- The generator test project includes analyzer option plumbing (14 tests); control tests cover token
+  injection and now total 82.
+
+### Documentation
+
+- Documented the cancellation option, the reserved cancel message, and the generated signature.
+
 ## [0.6.0] - 2026-10-18
 
 ### Added

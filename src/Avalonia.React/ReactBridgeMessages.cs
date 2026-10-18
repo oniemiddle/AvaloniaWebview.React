@@ -15,6 +15,9 @@ public static class ReactBridgeMessages
     /// <summary>Sent by the host with the result of a host API invocation.</summary>
     public const string InvokeResult = "avalonia:invoke:result";
 
+    /// <summary>Sent by the React client to cancel a pending host API invocation.</summary>
+    public const string InvokeCancel = "avalonia:invoke:cancel";
+
     /// <summary>Sent by the host whenever the effective theme variant changes.</summary>
     public const string Theme = "theme";
 

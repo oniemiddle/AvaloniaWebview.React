@@ -54,6 +54,7 @@ internal static class ReactBridgeProtocol
         type is ReactBridgeMessages.Ready
             or ReactBridgeMessages.Invoke
             or ReactBridgeMessages.InvokeResult
+            or ReactBridgeMessages.InvokeCancel
             or ReactBridgeMessages.Theme
             or ReactBridgeMessages.ThemeRequest
             or ReactBridgeMessages.Error;

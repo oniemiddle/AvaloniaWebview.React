@@ -17,6 +17,16 @@ Supported syntax: single-line and multi-line method signatures, interface inheri
 
 Generated interfaces are `partial` and annotated with `[ReactApiContract]` and `[ReactApiMethod]`, so the bridge uses the TypeScript names rather than deriving them from C# identifiers. Multiple interfaces with the same name in different `.d.ts` files no longer collide.
 
+### Cancellation tokens
+
+Set `<AvaloniaReactGenerateCancellationToken>true</AvaloniaReactGenerateCancellationToken>` in the host project to append a trailing cancellation parameter to every generated method:
+
+```csharp
+Task<string> GetGreetingAsync(string name, global::System.Threading.CancellationToken cancellationToken = default);
+```
+
+The runtime cancels the token when the React caller aborts or times out, when the page navigates, or when the WebView shuts down. The option is disabled by default so existing interfaces and implementations do not change.
+
 Keep the contract in the React project and reference the same file from the .NET project:
 
 ```xml

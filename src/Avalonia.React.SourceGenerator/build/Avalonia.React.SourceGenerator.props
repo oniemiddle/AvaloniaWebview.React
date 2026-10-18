@@ -2,5 +2,6 @@
   <ItemGroup>
     <AdditionalFiles Include="$(MSBuildProjectDirectory)\**\*.d.ts"
                      Exclude="$(MSBuildProjectDirectory)\**\node_modules\**;$(MSBuildProjectDirectory)\**\bin\**;$(MSBuildProjectDirectory)\**\obj\**" />
+    <CompilerVisibleProperty Include="AvaloniaReactGenerateCancellationToken" />
   </ItemGroup>
 </Project>

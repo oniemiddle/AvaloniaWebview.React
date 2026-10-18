@@ -18,6 +18,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
 {
     private static readonly Lazy<bool> DevServerLifetime = new(RegisterDevServerLifetime);
     private readonly Dictionary<string, ApiRegistration> _apis = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CancellationTokenSource> _pendingInvocations = new(StringComparer.Ordinal);
     private readonly ReactMessageQueue _messageQueue = new();
     private readonly List<Uri> _allowedOrigins = new();
     private IAssetTransport? _assetTransport;
@@ -313,6 +314,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
 #endif
         var transport = _assetTransport;
         _assetTransport = null;
+        CancelPendingInvocations(dispose: true);
         _messageQueue.FailAll(new ObjectDisposedException(nameof(AvaloniaReactWebView)));
         _apis.Clear();
         _bridgeReady = false;
@@ -591,6 +593,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
 
         _bridgeReady = false;
+        CancelPendingInvocations(dispose: false);
         RememberNavigationOrigin(request);
         SetLoadState(ReactLoadState.Loading, null);
     }
@@ -599,6 +602,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     {
         if (!args.IsSuccess)
         {
+            CancelPendingInvocations(dispose: false);
             SetLoadState(ReactLoadState.Failed, args.Request is null
                 ? "The React page failed to load."
                 : $"Navigation to '{args.Request}' failed.");
@@ -815,6 +819,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
             return;
         }
 
+        if (messageType == ReactBridgeMessages.InvokeCancel)
+        {
+            Dispatcher.UIThread.Post(() => CancelApiInvocation(payload));
+            return;
+        }
+
         if (messageType == ReactBridgeMessages.Error)
         {
             var error = ReactJavaScriptErrorParser.Parse(payload);
@@ -868,6 +878,22 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private async Task HandleApiInvocationAsync(JsonElement payload)
     {
         var requestId = payload.TryGetProperty("requestId", out var idElement) ? idElement.GetString() : null;
+        CancellationTokenSource? cancellation = null;
+        if (!string.IsNullOrWhiteSpace(requestId))
+        {
+            cancellation = new CancellationTokenSource();
+            lock (_pendingInvocations)
+            {
+                if (_pendingInvocations.TryGetValue(requestId!, out var previous))
+                {
+                    previous.Cancel();
+                    previous.Dispose();
+                }
+
+                _pendingInvocations[requestId!] = cancellation;
+            }
+        }
+
         object? result = null;
         string? error = null;
 
@@ -883,12 +909,17 @@ public sealed class AvaloniaReactWebView : NativeWebView
             var jsonArguments = payload.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Array
                 ? argsElement.EnumerateArray().ToArray()
                 : Array.Empty<JsonElement>();
-            var arguments = ReactApiMethodBinder.Bind(method.GetParameters(), jsonArguments, apiName, methodName);
+            var arguments = ReactApiMethodBinder.Bind(
+                method.GetParameters(),
+                jsonArguments,
+                apiName,
+                methodName,
+                cancellation?.Token ?? CancellationToken.None);
             var implementationMethod = FindImplementationMethod(registration.Implementation.GetType(), method);
             var invocation = implementationMethod.Invoke(registration.Implementation, arguments);
             if (invocation is Task task)
             {
-                await AwaitInvocationAsync(task).ConfigureAwait(false);
+                await AwaitInvocationAsync(task, cancellation).ConfigureAwait(false);
                 result = task.GetType().IsGenericType ? task.GetType().GetProperty("Result")?.GetValue(task) : null;
             }
             else
@@ -901,6 +932,18 @@ public sealed class AvaloniaReactWebView : NativeWebView
             error = exception is TargetInvocationException { InnerException: not null } targetInvocation
                 ? targetInvocation.InnerException!.Message
                 : exception.Message;
+        }
+        finally
+        {
+            if (cancellation is not null)
+            {
+                lock (_pendingInvocations)
+                {
+                    _pendingInvocations.Remove(requestId!);
+                }
+
+                cancellation.Dispose();
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(requestId))
@@ -916,7 +959,66 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
     }
 
-    private async Task AwaitInvocationAsync(Task task)
+    private void CancelApiInvocation(JsonElement payload)
+    {
+        var requestId = payload.TryGetProperty("requestId", out var idElement) ? idElement.GetString() : null;
+        if (string.IsNullOrEmpty(requestId))
+        {
+            return;
+        }
+
+        lock (_pendingInvocations)
+        {
+            if (_pendingInvocations.TryGetValue(requestId, out var cancellation))
+            {
+                try
+                {
+                    cancellation.Cancel();
+                }
+                catch (Exception)
+                {
+                    // The invocation completed while the cancel message was in flight, or a
+                    // cancellation callback threw; cancellation is best-effort.
+                }
+            }
+        }
+    }
+
+    private void CancelPendingInvocations(bool dispose)
+    {
+        CancellationTokenSource[] pending;
+        lock (_pendingInvocations)
+        {
+            if (_pendingInvocations.Count == 0)
+            {
+                return;
+            }
+
+            pending = _pendingInvocations.Values.ToArray();
+            if (dispose)
+            {
+                _pendingInvocations.Clear();
+            }
+        }
+
+        foreach (var cancellation in pending)
+        {
+            try
+            {
+                cancellation.Cancel();
+            }
+            catch (Exception)
+            {
+            }
+
+            if (dispose)
+            {
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private async Task AwaitInvocationAsync(Task task, CancellationTokenSource? cancellation)
     {
         if (ApiInvokeTimeout <= TimeSpan.Zero)
         {
@@ -932,6 +1034,14 @@ public sealed class AvaloniaReactWebView : NativeWebView
             timeoutCancellation.Cancel();
             await task.ConfigureAwait(false);
             return;
+        }
+
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (Exception)
+        {
         }
 
         // Observe a fault that arrives after the timeout so it does not surface as an unobserved exception.
