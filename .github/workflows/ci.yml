@@ -34,6 +34,9 @@ jobs:
         run: npm --prefix client run build
       - name: Test bridge client
         run: npm --prefix client test
+      - name: Build cross-platform sample
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet build samples/ReactHost/ReactHost.csproj -c Release -f net10.0 --nologo -v minimal -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
 
   pack:
     name: Pack packages

@@ -39,7 +39,7 @@
 
   <Target Name="AvaloniaReactCopyBuildOutput"
           AfterTargets="Build"
-          Condition="Exists('$(AvaloniaReactProjectDirectory)\dist')">
+          Condition="'$(TargetDir)' != '' and Exists('$(AvaloniaReactProjectDirectory)\dist')">
     <ItemGroup>
       <_AvaloniaReactOutput Include="$(AvaloniaReactProjectDirectory)\dist\**\*" />
     </ItemGroup>
@@ -50,7 +50,7 @@
 
   <Target Name="AvaloniaReactCopyPublishOutput"
           AfterTargets="Publish"
-          Condition="Exists('$(AvaloniaReactProjectDirectory)\dist')">
+          Condition="'$(PublishDir)' != '' and Exists('$(AvaloniaReactProjectDirectory)\dist')">
     <ItemGroup>
       <_AvaloniaReactPublishOutput Include="$(AvaloniaReactProjectDirectory)\dist\**\*" />
     </ItemGroup>
@@ -61,7 +61,7 @@
 
   <Target Name="AvaloniaReactVerifyEmbeddedAssets"
           AfterTargets="AvaloniaReactCopyBuildOutput"
-          Condition="'$(AvaloniaReactEmbeddedAssets)' == 'true' and !Exists('$(TargetDir)wwwroot\index.html')">
+          Condition="'$(AvaloniaReactEmbeddedAssets)' == 'true' and '$(TargetDir)' != '' and !Exists('$(TargetDir)wwwroot\index.html')">
     <Warning Text="AvaloniaReactEmbeddedAssets is enabled, but $(TargetDir)wwwroot\index.html is missing. Ensure the frontend is built and copied before calling UseEmbeddedAssets." />
   </Target>
 </Project>

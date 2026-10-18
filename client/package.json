@@ -1,6 +1,22 @@
 {
   "name": "@avalonia-react/bridge",
   "version": "0.1.0",
+  "description": "TypeScript bridge for hosting React inside Avalonia.React",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oniemiddle/Avalonia.React.git",
+    "directory": "client"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "avalonia",
+    "react",
+    "webview",
+    "bridge"
+  ],
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

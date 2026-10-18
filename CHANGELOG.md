@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-18
+
+### Added
+
+- `AvaloniaReactWebView.Shutdown()` and `ReactHostView.Shutdown()`/`Dispose()`. Shutdown is
+  idempotent, stops the WebView, disposes the embedded asset transport, fails queued messages, and
+  clears registered APIs; bridge operations then throw `ObjectDisposedException`. The host window
+  closing path now uses the same shutdown routine.
+- The sample multi-targets `net10.0-windows` and `net10.0`, so it builds and runs on macOS/Linux
+  (with the platform WebKit runtime) as well as Windows. CI builds the cross-platform target on
+  Linux.
+- A tag-driven release workflow (`.github/workflows/release.yml`) that validates the tag against
+  `AvaloniaReactVersion`, runs all test suites, packs the three packages, publishes to NuGet when
+  `NUGET_API_KEY` is configured, and creates a GitHub release.
+- Repository/project URL metadata for all packages, LICENSE in the Vite package, and npm metadata
+  for the bridge client (description, license, repository, engines, keywords).
+
+### Changed
+
+- Package version is `0.6.0`.
+- README documents explicit target frameworks for running the multi-targeted sample.
+
+### Fixed
+
+- The frontend copy/verify MSBuild targets no longer run without a `TargetDir`, which previously
+  copied `dist` into the project root when a multi-targeted host project was built.
+
 ## [0.5.0] - 2026-10-18
 
 ### Added

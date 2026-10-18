@@ -94,7 +94,7 @@ The Avalonia.React MSBuild targets emit assembly metadata into the host executab
                      ErrorTextFormat="页面加载失败：{0}" />
 ```
 
-`ReactHostView` exposes `RegisterApi`, `PostMessageAsync`, `Reload`, `SourceMode`, the load/bridge events, and the underlying `WebView` for advanced use. Set `WaitForBridgeReady="False"` (the default) to hide the overlay as soon as navigation completes. `BridgeReadyTimeout` (10 seconds by default) prevents a missing handshake from keeping the overlay visible forever. `ShowOverlay="False"` disables the built-in overlay entirely.
+`ReactHostView` exposes `RegisterApi`, `PostMessageAsync`, `Reload`, `SourceMode`, the load/bridge events, and the underlying `WebView` for advanced use. Set `WaitForBridgeReady="False"` (the default) to hide the overlay as soon as navigation completes. `BridgeReadyTimeout` (10 seconds by default) prevents a missing handshake from keeping the overlay visible forever. `ShowOverlay="False"` disables the built-in overlay entirely. Call `Shutdown()` (or `Dispose()`) when discarding a host view; shutdown is idempotent and releases the embedded asset transport.
 
 ### Load state and recovery
 
@@ -247,10 +247,14 @@ cd samples/react-app
 npm install
 ```
 
-Then start the Avalonia host in Debug configuration. The Vite extension starts the frontend automatically; Vite hot reload continues inside the official native WebView.
+Then start the Avalonia host in Debug configuration. The sample multi-targets the Windows WebView2 host and the cross-platform target; pass `-f` to select one. The Vite extension starts the frontend automatically; Vite hot reload continues inside the official native WebView.
 
 ```sh
-dotnet run --project samples/ReactHost
+# Windows (WebView2)
+dotnet run --project samples/ReactHost -f net10.0-windows
+
+# macOS/Linux (system WebKit runtime required)
+dotnet run --project samples/ReactHost -f net10.0
 ```
 
 The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app calls `signalReady()` from `@avalonia-react/bridge` after React mounts. The sample window uses `ReactHostView` with `SourceMode="Auto"`, `EnableWindowsOffscreenComposition="True"`, and `WaitForBridgeReady="True"`, so the built-in themed overlay replaces the previous hand-written loading/error UI; the code-behind only registers the generated API and handles the demo messages. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting, and the "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
@@ -269,11 +273,16 @@ npm --prefix client test
 
 The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, JavaScript error parsing, and the loopback asset server (including keep-alive and conditional requests). The generator tests compile generated interfaces and assert the diagnostics. The client tests run on Node's built-in test runner and exercise messaging, the typed proxy, timeouts, aborts, page unload, and error forwarding. GitHub Actions runs all three suites on Windows and Linux and packs all three packages.
 
+## Release
+
+Set `AvaloniaReactVersion` in `Directory.Build.props`, commit, and push a matching `vX.Y.Z` tag. The release workflow validates the tag, runs all tests, packs the three packages, publishes them to NuGet when the `NUGET_API_KEY` repository secret is configured, and creates a GitHub release with the `.nupkg` files attached.
+
 ## Platform notes
 
 - Windows uses the installed Microsoft Edge WebView2 runtime.
 - macOS uses the system WKWebView.
 - Linux needs WebKitGTK or WPE WebKit runtime libraries.
+- The sample builds for `net10.0-windows` and `net10.0`; the cross-platform target uses loopback HTTP for embedded assets.
 - The embedded asset pipeline in this repository targets desktop host applications; mobile and browser hosting are not covered by the sample or the MSBuild targets.
 
 See the [official Avalonia WebView documentation](https://docs.avaloniaui.net/docs/app-development/embedding-web-content) for platform setup details.

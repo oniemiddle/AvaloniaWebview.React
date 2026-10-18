@@ -30,6 +30,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private Uri? _navigationOrigin;
     private bool _sourceConfigured;
     private bool _bridgeReady;
+    private bool _isShutdown;
     private ReactLoadState _loadState;
 
     /// <summary>
@@ -73,6 +74,9 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     /// <summary>Gets whether the page navigated successfully and can receive host messages.</summary>
     public bool IsPageLoaded => _loadState == ReactLoadState.Loaded;
+
+    /// <summary>Gets whether <see cref="Shutdown"/> has been called.</summary>
+    public bool IsShutdown => _isShutdown;
 
     /// <summary>Gets whether the React client has sent the <c>avalonia:ready</c> handshake for the current page.</summary>
     public bool IsBridgeReady => _bridgeReady;
@@ -143,6 +147,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// </remarks>
     public Uri UseEmbeddedAssets(Action<EmbeddedAssetOptions>? configure = null)
     {
+        ThrowIfShutdown();
         if (_embeddedAssetsEnabled)
         {
             throw new InvalidOperationException("Embedded assets are already enabled.");
@@ -215,6 +220,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <returns><see langword="true"/> when a source was configured; otherwise <see langword="false"/>.</returns>
     public bool ApplySourceMode()
     {
+        ThrowIfShutdown();
         if (SourceMode == ReactSourceMode.Manual || _sourceConfigured || _embeddedAssetsEnabled)
         {
             return false;
@@ -264,6 +270,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <returns><see langword="true"/> when the platform accepted the refresh request.</returns>
     public bool Reload()
     {
+        ThrowIfShutdown();
         if (Source is null && !_sourceConfigured)
         {
             _ = ApplySourceMode();
@@ -287,6 +294,45 @@ public sealed class AvaloniaReactWebView : NativeWebView
     }
 
     /// <summary>
+    /// Stops the WebView, stops the embedded asset transport, fails queued messages, and clears
+    /// registered APIs. The method is idempotent; after it is called, bridge operations throw
+    /// <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    public void Shutdown()
+    {
+        if (_isShutdown)
+        {
+            return;
+        }
+
+        _isShutdown = true;
+        DetachAssetServerWindow();
+#if WINDOWS
+        AdapterCreated -= HandleNativeAssetAdapterCreated;
+        _nativeAssetHost = null;
+#endif
+        var transport = _assetTransport;
+        _assetTransport = null;
+        _messageQueue.FailAll(new ObjectDisposedException(nameof(AvaloniaReactWebView)));
+        _apis.Clear();
+        _bridgeReady = false;
+        if (transport is not null)
+        {
+            _ = transport.DisposeAsync().AsTask();
+        }
+
+        SetLoadState(ReactLoadState.Idle, null);
+        try
+        {
+            Stop();
+        }
+        catch (Exception)
+        {
+            // The adapter can already be gone when the host window is closing.
+        }
+    }
+
+    /// <summary>
     /// Registers an implementation of a TypeScript-generated API contract so React can invoke its methods.
     /// </summary>
     /// <typeparam name="TApi">The generated C# interface for an exported TypeScript API.</typeparam>
@@ -294,6 +340,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <param name="apiName">The JavaScript API name. Defaults to the generated interface name without its leading I.</param>
     public void RegisterApi<TApi>(TApi implementation, string? apiName = null) where TApi : class
     {
+        ThrowIfShutdown();
         ArgumentNullException.ThrowIfNull(implementation);
         var contract = typeof(TApi);
         if (!contract.IsInterface)
@@ -332,6 +379,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <returns><see langword="true"/> when an API was removed.</returns>
     public bool UnregisterApi(string apiName)
     {
+        ThrowIfShutdown();
         ArgumentException.ThrowIfNullOrWhiteSpace(apiName);
         return _apis.Remove(apiName);
     }
@@ -345,6 +393,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <returns>The result returned by the native WebView JavaScript execution.</returns>
     public Task<string?> PostMessageAsync<T>(string type, T payload)
     {
+        ThrowIfShutdown();
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
         var message = JsonSerializer.Serialize(new ReactMessage<T>(type, payload));
@@ -372,6 +421,11 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <inheritdoc />
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        if (_isShutdown)
+        {
+            return;
+        }
+
         if (!_sourceConfigured)
         {
             _ = ApplySourceMode();
@@ -465,22 +519,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
     }
 
-    private void HandleAssetServerWindowClosed(object? sender, EventArgs e)
-    {
-        DetachAssetServerWindow();
-#if WINDOWS
-        AdapterCreated -= HandleNativeAssetAdapterCreated;
-        _nativeAssetHost = null;
-#endif
-
-        _messageQueue.FailAll(new InvalidOperationException("The host window closed before the message could be delivered."));
-        var transport = _assetTransport;
-        _assetTransport = null;
-        if (transport is not null)
-        {
-            _ = transport.DisposeAsync().AsTask();
-        }
-    }
+    private void HandleAssetServerWindowClosed(object? sender, EventArgs e) => Shutdown();
 
     private Task<string?> PostScriptAsync(string script)
     {
@@ -748,6 +787,11 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     private void HandleWebMessageReceived(object? sender, WebMessageReceivedEventArgs args)
     {
+        if (_isShutdown)
+        {
+            return;
+        }
+
         if (!ReactBridgeProtocol.TryParse(args.Body, out var messageType, out var payload))
         {
             return;
@@ -919,6 +963,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
         return implementationType.GetMethod(interfaceMethod.Name)
             ?? throw new InvalidOperationException($"The implementation of '{interfaceType?.Name}.{interfaceMethod.Name}' is missing.");
     }
+
+    private void ThrowIfShutdown() => ObjectDisposedException.ThrowIf(_isShutdown, this);
 
     private static string GetJavaScriptMethodName(MethodInfo method)
     {

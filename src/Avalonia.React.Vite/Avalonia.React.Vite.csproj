@@ -7,6 +7,9 @@
     <Description>Vite development server integration for Avalonia.React desktop apps.</Description>
     <PackageTags>Avalonia;React;Vite;WebView;Build</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/oniemiddle/Avalonia.React</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/oniemiddle/Avalonia.React</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts\packages</PackageOutputPath>
@@ -15,5 +18,6 @@
   <ItemGroup>
     <None Update="build\Avalonia.React.Vite.targets" Pack="true" PackagePath="buildTransitive\Avalonia.React.Vite.targets" />
     <None Include="README.md" Pack="true" PackagePath="README.md" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="LICENSE" />
   </ItemGroup>
 </Project>

@@ -12,7 +12,7 @@ namespace Avalonia.React;
 /// most common configuration, events, and methods. Applications that need full control can use
 /// <see cref="WebView"/> directly.
 /// </summary>
-public sealed class ReactHostView : Grid
+public sealed class ReactHostView : Grid, IDisposable
 {
     private readonly Border _overlay;
     private readonly StackPanel _overlayPanel;
@@ -82,6 +82,20 @@ public sealed class ReactHostView : Grid
 
     /// <summary>Gets the underlying WebView. Use it for advanced configuration and raw events.</summary>
     public AvaloniaReactWebView WebView { get; }
+
+    /// <summary>Gets whether <see cref="Shutdown"/> has been called.</summary>
+    public bool IsShutdown => WebView.IsShutdown;
+
+    /// <summary>Stops the WebView, overlay timer, and embedded asset transport.</summary>
+    public void Shutdown()
+    {
+        _readyTimer.Stop();
+        WebView.Shutdown();
+        _overlay.IsVisible = false;
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => Shutdown();
 
     /// <summary>Gets or sets how the initial source is selected.</summary>
     public ReactSourceMode SourceMode
