@@ -17,14 +17,21 @@ Update the version in all three places and keep them identical:
 
 Add a matching section to `CHANGELOG.md`, then commit and push a tag named `vX.Y.Z`.
 
-## Required secrets
+## Required configuration
 
-Configure these repository secrets before publishing:
+NuGet uses **Trusted Publishing** (GitHub OIDC); no long-lived NuGet API key is stored in the repository.
 
-- `NUGET_API_KEY` — nuget.org API key with push permission for the three package IDs.
-- `NPM_TOKEN` — npm automation token with publish permission for the `@avalonia-react` scope.
+1. On nuget.org, open **Account → Trusted Publishing** and add a policy for:
+   - Repository owner: `oniemiddle`
+   - Repository: `Avalonia.React`
+   - Workflow file: `release.yml`
+   - Environment: leave empty unless you add a matching GitHub environment to the release job
+2. Add the repository secret `NUGET_USER` with your nuget.org profile name (not the email address).
+3. Add the repository secret `NPM_TOKEN` with publish permission for the `@avalonia-react` npm scope.
 
-If a secret is missing, that registry is skipped; the GitHub release is still created.
+The release workflow grants `id-token: write`, runs `NuGet/login@v1`, and uses its short-lived `NUGET_API_KEY` output for `dotnet nuget push`. If `NUGET_USER`/the policy is not configured, NuGet publishing is skipped. If `NPM_TOKEN` is missing, npm publishing is skipped. The GitHub release is created either way.
+
+Background: [nuget.org Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) and the [NuGet/login action](https://github.com/NuGet/login).
 
 ## Release workflow
 
@@ -35,7 +42,7 @@ If a secret is missing, that registry is skipped; the GitHub release is still cr
 3. Builds the TypeScript client and verifies its publish manifest.
 4. Packs the three NuGet packages and the npm tarball.
 5. Verifies NuGet package contents with `eng/verify-nuget-packages.ps1`.
-6. Publishes NuGet packages (including `.snupkg` symbols) and the npm package when their secrets are set.
+6. Authenticates to nuget.org through Trusted Publishing (`NuGet/login@v1` + OIDC) and publishes NuGet packages (including `.snupkg` symbols); publishes the npm package when `NPM_TOKEN` is set.
 7. Creates a GitHub release and attaches the `.nupkg`, `.snupkg`, and `.tgz` files.
 
 ## Local verification

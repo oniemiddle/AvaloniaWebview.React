@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - NuGet package quality: deterministic CI builds, `.snupkg` symbols for `Avalonia.React`, release
   notes metadata, and root-level LICENSE files in all three packages. Analyzer/targets-only packages
   no longer attempt to produce empty symbol packages.
+- NuGet publishing now uses Trusted Publishing (`NuGet/login@v1` with GitHub OIDC and the
+  `NUGET_USER` secret) instead of a long-lived `NUGET_API_KEY`.
 - `README.md` and the client README document installation from NuGet/npm and local repository usage.
 - Package version is `0.16.0`; client version is `0.16.0`.
 
@@ -249,7 +251,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Linux.
 - A tag-driven release workflow (`.github/workflows/release.yml`) that validates the tag against
   `AvaloniaReactVersion`, runs all test suites, packs the three packages, publishes to NuGet when
-  `NUGET_API_KEY` is configured, and creates a GitHub release.
+  the registry credentials are configured, and creates a GitHub release.
 - Repository/project URL metadata for all packages, LICENSE in the Vite package, and npm metadata
   for the bridge client (description, license, repository, engines, keywords).
 

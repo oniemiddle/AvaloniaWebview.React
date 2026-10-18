@@ -381,7 +381,7 @@ The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm 
 
 ## Release
 
-Set `AvaloniaReactVersion` in `Directory.Build.props`, update `client/package.json` and `client/package-lock.json`, commit, and push a matching `vX.Y.Z` tag. The workflow validates all versions, runs tests, verifies package contents, publishes the NuGet packages (including `.snupkg` symbols) when `NUGET_API_KEY` is configured, publishes `@avalonia-react/bridge` when `NPM_TOKEN` is configured, and creates a GitHub release with the `.nupkg`, `.snupkg`, and `.tgz` files. See [RELEASING.md](RELEASING.md) for details.
+Set `AvaloniaReactVersion` in `Directory.Build.props`, update `client/package.json` and `client/package-lock.json`, commit, and push a matching `vX.Y.Z` tag. The workflow validates all versions, runs tests, verifies package contents, publishes the NuGet packages (including `.snupkg` symbols) using NuGet Trusted Publishing when `NUGET_USER` and the nuget.org policy are configured, publishes `@avalonia-react/bridge` when `NPM_TOKEN` is configured, and creates a GitHub release with the `.nupkg`, `.snupkg`, and `.tgz` files. See [RELEASING.md](RELEASING.md) for details.
 
 ## Trimming and Native AOT
 
