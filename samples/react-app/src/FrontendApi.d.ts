@@ -4,6 +4,11 @@ export enum ServiceHealth {
   Degraded = "degraded",
 }
 
+/** Host -> React message payload; generated as an AOT-safe DTO. */
+export interface ReactAck {
+  at: string;
+}
+
 export interface RuntimeSnapshot {
   host: string;
   webView: string;

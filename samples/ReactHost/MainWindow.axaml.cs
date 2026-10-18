@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using AvaloniaWebview.React;
@@ -37,6 +38,16 @@ public sealed partial class MainWindow : Window
         HostStatusText.Text = _runtimeSummary;
     }
 
+    // Native AOT: the payload is a string and the handler result is a string, both covered by the
+    // generated resolver's built-in type infos, so no reflection-based JSON metadata is needed.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "The payload and result are primitives covered by the generated JSON resolver.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "The payload and result are primitives covered by the generated JSON resolver.")]
     private async void HandleHostGreetClick(object? sender, RoutedEventArgs e)
     {
         HostGreetButton.IsEnabled = false;
@@ -85,6 +96,15 @@ public sealed partial class MainWindow : Window
     private void HandleOpenIsolatedWindowClick(object? sender, RoutedEventArgs e) =>
         new MainWindow(ReactWebViewSession.CreateEphemeral()).Show();
 
+    // Native AOT: ReactAck comes from FrontendApi.d.ts, so the generated resolver owns its metadata.
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "The payload is the generated ReactAck DTO, covered by the generated JSON resolver.")]
+    [UnconditionalSuppressMessage(
+        "AOT",
+        "IL3050",
+        Justification = "The payload is the generated ReactAck DTO, covered by the generated JSON resolver.")]
     private void HandleMessageReceived(object? sender, ReactMessageReceivedEventArgs message)
     {
         if (message.Type != "react:clicked")
@@ -94,7 +114,7 @@ public sealed partial class MainWindow : Window
 
         var receivedAt = DateTimeOffset.Now;
         Title = $"Avalonia + React · 已收到 React 消息 {receivedAt:HH:mm:ss}";
-        _ = ReactHost.PostMessageAsync("react:ack", new { at = receivedAt.ToString("HH:mm:ss") });
+        _ = ReactHost.PostMessageAsync("react:ack", new ReactAck { At = receivedAt.ToString("HH:mm:ss") });
     }
 
     private sealed class HostApi : IHostApi

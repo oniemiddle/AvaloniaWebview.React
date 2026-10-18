@@ -23,6 +23,17 @@
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />
   </ItemGroup>
+  <!-- Native AOT publish: SkiaSharp/HarfBuzz native packages ship large .pdb files that the
+       runtime never loads. Keep the published folder lean for a Release build. -->
+  <Target Name="ReactHostRemovePublishSymbols"
+          AfterTargets="ComputeFilesToPublish"
+          Condition="'$(PublishAot)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
   <Import Project="..\..\src\AvaloniaWebview.React\build\AvaloniaWebview.React.targets" />
   <Import Project="..\..\src\AvaloniaWebview.React.Vite\build\AvaloniaWebview.React.Vite.targets" />
 </Project>

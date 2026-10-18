@@ -11,7 +11,7 @@ import {
   useReactHandler,
   useSignalReady,
 } from "@avalonia-react/bridge/react";
-import type { HostApi, RuntimeSnapshot } from "./FrontendApi";
+import type { HostApi, ReactAck, RuntimeSnapshot } from "./FrontendApi";
 
 const ServiceTable = lazy(() => import("./ServiceTable"));
 
@@ -45,7 +45,7 @@ export default function App() {
   useSignalReady({ frontend: "React 19", toolkit: "0.18" });
 
   // Hook-based subscriptions replace the manual subscribe/signalReady effects.
-  useAvaloniaMessage<{ at: string }>("react:ack", ({ at }) => setAck(at));
+  useAvaloniaMessage<ReactAck>("react:ack", ({ at }) => setAck(at));
 
   // The native toolbar's "宿主 → React" button invokes this handler.
   useReactHandler<string>(

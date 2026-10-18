@@ -405,6 +405,32 @@ The sample now demonstrates the 0.18 feature set end to end:
 
 The service table is a separate dynamic module loaded only when requested. The "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
 
+### Publish the sample with Native AOT
+
+The Windows sample also publishes as a self-contained Native AOT executable. Besides the .NET 10 SDK, Native AOT needs the MSVC linker from Visual Studio's "Desktop development with C++" workload and the Windows 10/11 SDK libraries (`kernel32.lib` and friends):
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File eng/publish-aot.ps1
+```
+
+Output lands in `artifacts/publish/ReactHost-win-x64-aot` — the native `ReactHost.exe`, its native Skia/HarfBuzz/ANGLE dependencies, and the Vite bundle in `wwwroot/` (about 39 MB in total). The script asserts that the output really is Native AOT (no managed `ReactHost.dll`), then launches it through [`eng/verify-published-app.ps1`](eng/verify-published-app.ps1), which writes a screenshot and a JSON report to `artifacts/aot-verify`; pass `-SkipRuntimeCheck` to stop after the build. The configuration lives in `samples/ReactHost/Properties/PublishProfiles/win-x64-aot.pubxml`, so the equivalent direct command is:
+
+```sh
+dotnet publish samples/ReactHost/ReactHost.csproj -p:PublishProfile=win-x64-aot -f net10.0-windows
+```
+
+`PublishAot` is set in the publish profile instead of being passed as a global property: global properties flow into project references, and the `netstandard2.0` source generator would then fail with `NETSDK1207`. Publishing also runs the Vite production build; pass `-p:AvaloniaReactBuildOnBuild=false` (or `-SkipFrontendBuild`) to reuse an existing `samples/react-app/dist`.
+
+The publish is **unsigned** by default, so the first launch shows Windows' "unknown publisher" security warning (打开文件 - 安全警告); that is expected for a locally built executable, and the publish script prints its SHA-256 for comparison. If the file was downloaded or unpacked from an archive, clear the mark-of-the-web first with `Unblock-File .\ReactHost.exe`. For distribution, sign with an Authenticode code-signing certificate:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File eng/publish-aot.ps1 -CertificateThumbprint <thumbprint>
+```
+
+The script finds `signtool.exe` in the Windows 10/11 SDK, signs with SHA-256 and an RFC 3161 timestamp (`-TimestampServer`; pass `none` to skip), and verifies the signature. A self-signed certificate only suppresses the warning on machines that trust it (Trusted Root + Trusted Publishers); public distribution needs a CA-issued certificate (for example Azure Trusted Signing) so the publisher name can be verified.
+
+Payloads stay AOT-safe because the sample uses its generated contract: the host's `react:ack` message serializes a generated `ReactAck` DTO instead of an anonymous type, and the two annotated `PostMessageAsync`/`InvokeReactAsync` call sites suppress `IL2026`/`IL3050` because their payloads are primitives or generated DTOs that the generated JSON resolver covers. Adding an anonymous object or an unmapped custom payload to those calls would fail at run time once reflection-based serialization is trimmed away.
+
 Build all three NuGet packages with:
 
 ```sh
@@ -464,7 +490,7 @@ ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
 // Or per view: webView.BridgeJsonSerializerOptions = AppJsonContext.Default.Options;
 ```
 
-Setting `ReactJsonSerializerDefaults.Options` keeps the generated resolver as a fallback, so generated DTO/enum contracts and custom context types can coexist. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's primitive API and a generated DTO/enum/list contract were verified with `PublishTrimmed=true` and reflection-based serialization disabled.
+Setting `ReactJsonSerializerDefaults.Options` keeps the generated resolver as a fallback, so generated DTO/enum contracts and custom context types can coexist. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's primitive API and a generated DTO/enum/list contract were verified with `PublishTrimmed=true` and reflection-based serialization disabled, and `samples/ReactHost` publishes end to end with Native AOT (`eng/publish-aot.ps1`).
 
 ## Multi-window apps and shared sessions
 
