@@ -177,6 +177,55 @@ public sealed record ReactWebViewAvailabilityReport
 
 `Check()` probes the platform adapter without creating a WebView. `EnsureAvailable()` throws `PlatformNotSupportedException` with the report's message and guidance when unavailable.
 
+## Resource cleanup
+
+```csharp
+[Flags]
+public enum ReactWebViewDataKind
+{
+    None = 0,
+    Cookies = 1,
+    LocalStorage = 2,
+    SessionStorage = 4,
+    CacheStorage = 8,
+    IndexedDb = 16,
+    ServiceWorkers = 32,
+    BrowserStorage = LocalStorage | SessionStorage | CacheStorage | IndexedDb | ServiceWorkers,
+    All = Cookies | BrowserStorage,
+}
+
+public sealed record ReactWebViewCleanupResult
+{
+    public ReactWebViewDataKind Requested { get; init; }
+    public ReactWebViewDataKind Cleared { get; init; }
+    public ReactWebViewDataKind Failed { get; init; }
+    public IReadOnlyList<string> Warnings { get; init; }
+    public bool IsSuccess { get; }
+}
+
+Task<ReactWebViewCleanupResult> ClearBrowserDataAsync(
+    ReactWebViewDataKind kinds = ReactWebViewDataKind.All,
+    CancellationToken cancellationToken = default);
+Task<ReactWebViewCleanupResult> ClearCookiesAsync(CancellationToken cancellationToken = default);
+
+public static class ReactWebViewResources
+{
+    public static Task<ReactWebViewAssetCleanupResult> ClearExtractedAssetsAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ReactWebViewAssetCleanupResult
+{
+    public IReadOnlyList<string> DeletedRoots { get; init; }
+    public int DeletedFiles { get; init; }
+    public long DeletedBytes { get; init; }
+    public IReadOnlyList<string> Errors { get; init; }
+    public bool IsSuccess { get; }
+}
+```
+
+`ClearBrowserDataAsync` requires a loaded page for script-visible browser storage; cookie cleanup works without it. `CacheStorage` is the browser Cache API, not the platform HTTP cache. Failures are returned via `Failed`/`Warnings`; the method does not throw for individual unsupported kinds. `ClearExtractedAssetsAsync` deletes process-registered embedded-asset extraction roots (including custom ones) and clears the extractor cache; call it after those WebViews are shut down.
+
 ## Client (`@avalonia-react/bridge`)
 
 ```ts

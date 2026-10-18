@@ -154,7 +154,15 @@ Multiple windows that open different pages instead of sharing storage:
 - Closing one window no longer stops another window's shared server; the last release stops it.
 - Registered host APIs are per `ReactWebView`; register them on every window's control (or share services), even when browser storage is shared.
 
-## 7. Generator and XAML errors
+## 7. Resource cleanup fails or is incomplete
+
+- `ClearBrowserDataAsync` only clears script-visible storage for a loaded page; check `LoadState`/`IsBridgeReady`.
+- `CacheStorage` is the browser Cache API, not the engine's HTTP cache. HTTP cache/profile removal requires closing the WebView and deleting the configured `UserDataFolder`/profile.
+- Shared sessions mean another window may repopulate cookies/storage after cleanup.
+- `ClearCookiesAsync` requires a platform cookie manager; unavailable platforms report `Cookies` in `Failed` with a warning.
+- `ClearExtractedAssetsAsync` deletes extraction roots registered in the current process; shut down WebViews using assembly-embedded assets first.
+
+## 8. Generator and XAML errors
 
 - XAML namespace: `xmlns:react="using:AvaloniaWebview.React"`.
 - The WebView type remains `AvaloniaReactWebView`; the host type is `ReactHostView`.
@@ -165,7 +173,7 @@ Multiple windows that open different pages instead of sharing storage:
 - `AVR0004` — enum skipped. Use all-string or all-numeric values and explicit integer literals.
 - If the generated interface is not visible, confirm the `.d.ts` file is under the project or listed in `<AdditionalFiles>` and that the generator package is installed.
 
-## 8. Version and rename checks
+## 9. Version and rename checks
 
 The current namespace/assembly is `AvaloniaWebview.React`; NuGet versions are `0.17.x`. The public WebView type is still `AvaloniaReactWebView`, and the npm client is still `@avalonia-react/bridge`.
 

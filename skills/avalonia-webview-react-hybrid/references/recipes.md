@@ -202,6 +202,30 @@ Generated `UserProfile` has `[JsonPropertyName]` properties and nullable optiona
 
 If an interface mixes methods and properties, it is treated as an API and its properties are reported as unsupported (`AVR0001`). Split the shape into an API interface and a DTO interface.
 
+## Resource cleanup
+
+```csharp
+using AvaloniaWebview.React;
+
+var result = await ReactHost.ClearBrowserDataAsync(
+    ReactWebViewDataKind.LocalStorage |
+    ReactWebViewDataKind.SessionStorage |
+    ReactWebViewDataKind.CacheStorage |
+    ReactWebViewDataKind.IndexedDb |
+    ReactWebViewDataKind.ServiceWorkers |
+    ReactWebViewDataKind.Cookies);
+
+if (!result.IsSuccess)
+{
+    Console.Error.WriteLine(string.Join("; ", result.Warnings));
+}
+
+// After all assembly-embedded-asset WebViews are shut down:
+await ReactWebViewResources.ClearExtractedAssetsAsync();
+```
+
+`ClearBrowserDataAsync` needs a loaded page for script-visible storage; cookie cleanup still works otherwise. The browser HTTP disk cache is platform-owned and not cleared by this API; delete the configured session/profile directory after shutting WebViews down for a full profile purge.
+
 ## Runtime availability preflight
 
 ```csharp

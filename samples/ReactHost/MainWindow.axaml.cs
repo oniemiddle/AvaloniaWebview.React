@@ -59,6 +59,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void HandleClearBrowserDataClick(object? sender, RoutedEventArgs e)
+    {
+        ClearDataButton.IsEnabled = false;
+        try
+        {
+            var result = await ReactHost.ClearBrowserDataAsync(ReactWebViewDataKind.BrowserStorage);
+            HostStatusText.Text = result.IsSuccess
+                ? $"已清理浏览器存储：{result.Cleared}"
+                : $"存储清理部分失败：{string.Join("; ", result.Warnings)}";
+        }
+        catch (Exception exception)
+        {
+            HostStatusText.Text = $"存储清理失败：{exception.Message}";
+        }
+        finally
+        {
+            ClearDataButton.IsEnabled = true;
+        }
+    }
+
     private void HandleOpenSecondWindowClick(object? sender, RoutedEventArgs e) =>
         new MainWindow().Show();
 

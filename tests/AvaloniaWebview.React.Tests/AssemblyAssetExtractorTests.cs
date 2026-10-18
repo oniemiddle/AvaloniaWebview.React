@@ -1,5 +1,6 @@
 namespace AvaloniaWebview.React.Tests;
 
+[Collection("EmbeddedAssetExtraction")]
 public sealed class AssemblyAssetExtractorTests
 {
     private readonly string _root = Path.Combine(

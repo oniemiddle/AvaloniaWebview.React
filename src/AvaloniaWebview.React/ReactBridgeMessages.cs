@@ -33,6 +33,9 @@ public static class ReactBridgeMessages
     /// <summary>Sent by the React client to request the current theme immediately.</summary>
     public const string ThemeRequest = "theme:request";
 
+    /// <summary>Sent by the React page after a browser-storage cleanup request completes.</summary>
+    public const string ResourcesCleared = "avalonia:resources:cleared";
+
     /// <summary>Sent by the React client when a window error or unhandled promise rejection occurs.</summary>
     public const string Error = "avalonia:error";
 

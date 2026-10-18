@@ -23,6 +23,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private readonly Dictionary<string, IReadOnlyDictionary<string, ReactApiMethodHandler>> _apiHandlers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CancellationTokenSource> _pendingInvocations = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<ReactInvokeResult>> _pendingReactInvocations = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<IReadOnlyList<string>>> _pendingBrowserCleanups = new(StringComparer.Ordinal);
     private readonly ReactMessageQueue _messageQueue = new();
     private readonly List<Uri> _allowedOrigins = [];
     private readonly List<Uri> _trustedApiOrigins = [];
@@ -383,6 +384,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         _assetTransport = null;
         CancelPendingInvocations(dispose: true);
         CancelPendingReactInvocations("The WebView was shut down before the React handler responded.");
+        CancelPendingBrowserCleanups("The WebView was shut down before browser cleanup completed.");
         _messageQueue.FailAll(new ObjectDisposedException(nameof(AvaloniaReactWebView)));
         _apis.Clear();
         _apiHandlers.Clear();
@@ -491,6 +493,108 @@ public sealed class AvaloniaReactWebView : NativeWebView
         var payloadJson = SerializeBridgeValue(payload);
         return PostJsonAsync(type, payloadJson);
     }
+
+    /// <summary>
+    /// Clears browser data owned by the native WebView. Script-visible storage requires a loaded
+    /// page; cookie cleanup uses the platform cookie manager.
+    /// </summary>
+    /// <param name="kinds">Data kinds to clear; defaults to <see cref="ReactWebViewDataKind.All"/>.</param>
+    /// <param name="cancellationToken">Cancels waiting for the browser cleanup.</param>
+    public async Task<ReactWebViewCleanupResult> ClearBrowserDataAsync(
+        ReactWebViewDataKind kinds = ReactWebViewDataKind.All,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfShutdown();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var requested = kinds & ReactWebViewDataKind.All;
+        var cleared = ReactWebViewDataKind.None;
+        var failed = ReactWebViewDataKind.None;
+        var warnings = new List<string>();
+
+        if ((requested & ReactWebViewDataKind.Cookies) != 0)
+        {
+            if (await ClearCookiesCoreAsync(warnings).ConfigureAwait(false))
+            {
+                failed |= ReactWebViewDataKind.Cookies;
+            }
+            else
+            {
+                cleared |= ReactWebViewDataKind.Cookies;
+            }
+        }
+
+        var browserKinds = requested & ReactWebViewDataKind.BrowserStorage;
+        if (browserKinds != ReactWebViewDataKind.None)
+        {
+            if (_loadState != ReactLoadState.Loaded)
+            {
+                failed |= browserKinds;
+                warnings.Add("Browser storage cleanup requires a loaded page.");
+            }
+            else
+            {
+                var requestId = Guid.NewGuid().ToString("N");
+                var completion = new TaskCompletionSource<IReadOnlyList<string>>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _pendingBrowserCleanups[requestId] = completion;
+                try
+                {
+                    var script = ReactBrowserDataCleanup.BuildScript(browserKinds, requestId);
+                    await PostScriptAsync(script).ConfigureAwait(false);
+
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+                    try
+                    {
+                        var failures = await completion.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+                        foreach (var failure in failures)
+                        {
+                            warnings.Add(failure);
+                        }
+
+                        var scriptFailed = MapBrowserCleanupFailures(failures);
+                        failed |= scriptFailed;
+                        cleared |= browserKinds & ~scriptFailed;
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        failed |= browserKinds;
+                        warnings.Add("Browser storage cleanup timed out.");
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        failed |= browserKinds;
+                        warnings.Add(exception.Message);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    failed |= browserKinds;
+                    warnings.Add(exception.Message);
+                }
+                finally
+                {
+                    _pendingBrowserCleanups.TryRemove(requestId, out _);
+                }
+            }
+        }
+
+        return new ReactWebViewCleanupResult
+        {
+            Requested = requested,
+            Cleared = cleared,
+            Failed = failed,
+            Warnings = warnings,
+        };
+    }
+
+    /// <summary>Clears cookies for the current WebView session.</summary>
+    public Task<ReactWebViewCleanupResult> ClearCookiesAsync(CancellationToken cancellationToken = default) =>
+        ClearBrowserDataAsync(ReactWebViewDataKind.Cookies, cancellationToken);
 
     /// <summary>
     /// Invokes a handler registered with <c>registerReactHandler</c> in the React client.
@@ -616,6 +720,124 @@ public sealed class AvaloniaReactWebView : NativeWebView
             ? resultElement.Clone()
             : (JsonElement?)null;
         completion.TrySetResult(new ReactInvokeResult(result, error));
+    }
+
+    private void HandleResourceCleanupResult(JsonElement payload)
+    {
+        if (!IsHostApiOriginTrusted(out var pageOrigin))
+        {
+            RaiseSecurityViolation(
+                "Browser cleanup results are not allowed from this page origin.",
+                pageOrigin);
+            return;
+        }
+
+        if (!payload.TryGetProperty("requestId", out var idElement) ||
+            idElement.GetString() is not { Length: > 0 } requestId ||
+            !_pendingBrowserCleanups.TryRemove(requestId, out var completion))
+        {
+            return;
+        }
+
+        var failures = new List<string>();
+        if (payload.TryGetProperty("failures", out var failuresElement) &&
+            failuresElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var failure in failuresElement.EnumerateArray())
+            {
+                if (failure.ValueKind == JsonValueKind.String)
+                {
+                    failures.Add(failure.GetString() ?? "unknown cleanup failure");
+                }
+            }
+        }
+
+        completion.TrySetResult(failures);
+    }
+
+    private static ReactWebViewDataKind MapBrowserCleanupFailures(IReadOnlyList<string> failures)
+    {
+        var failed = ReactWebViewDataKind.None;
+        foreach (var failure in failures)
+        {
+            if (failure.StartsWith("localStorage", StringComparison.Ordinal))
+            {
+                failed |= ReactWebViewDataKind.LocalStorage;
+            }
+            else if (failure.StartsWith("sessionStorage", StringComparison.Ordinal))
+            {
+                failed |= ReactWebViewDataKind.SessionStorage;
+            }
+            else if (failure.StartsWith("cacheStorage", StringComparison.Ordinal))
+            {
+                failed |= ReactWebViewDataKind.CacheStorage;
+            }
+            else if (failure.StartsWith("indexedDb", StringComparison.Ordinal))
+            {
+                failed |= ReactWebViewDataKind.IndexedDb;
+            }
+            else if (failure.StartsWith("serviceWorkers", StringComparison.Ordinal))
+            {
+                failed |= ReactWebViewDataKind.ServiceWorkers;
+            }
+            else
+            {
+                failed |= ReactWebViewDataKind.BrowserStorage;
+            }
+        }
+
+        return failed;
+    }
+
+    private async Task<bool> ClearCookiesCoreAsync(List<string> warnings)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            return await Dispatcher.UIThread.InvokeAsync(() => ClearCookiesCoreAsync(warnings)).ConfigureAwait(false);
+        }
+
+        var manager = TryGetCookieManager();
+        if (manager is null)
+        {
+            warnings.Add("Cookie manager is not available on this platform.");
+            return true;
+        }
+
+        try
+        {
+            var cookies = await manager.GetCookiesAsync().ConfigureAwait(true);
+            var failed = false;
+            foreach (var cookie in cookies)
+            {
+                try
+                {
+                    manager.DeleteCookie(cookie);
+                }
+                catch (Exception exception)
+                {
+                    failed = true;
+                    warnings.Add($"Could not delete cookie '{cookie.Name}': {exception.Message}");
+                }
+            }
+
+            return failed;
+        }
+        catch (Exception exception)
+        {
+            warnings.Add("Could not enumerate cookies: " + exception.Message);
+            return true;
+        }
+    }
+
+    private void CancelPendingBrowserCleanups(string message)
+    {
+        foreach (var entry in _pendingBrowserCleanups)
+        {
+            if (_pendingBrowserCleanups.TryRemove(entry.Key, out var completion))
+            {
+                completion.TrySetException(new InvalidOperationException(message));
+            }
+        }
     }
 
     private void CancelPendingReactInvocations(string message)
@@ -855,6 +1077,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         _bridgeReady = false;
         CancelPendingInvocations(dispose: false);
         CancelPendingReactInvocations("The page navigated before the React handler responded.");
+        CancelPendingBrowserCleanups("The page navigated before browser cleanup completed.");
         RememberNavigationOrigin(request);
         SetLoadState(ReactLoadState.Loading, null);
     }
@@ -865,6 +1088,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         {
             CancelPendingInvocations(dispose: false);
             CancelPendingReactInvocations("The page failed to load before the React handler responded.");
+            CancelPendingBrowserCleanups("The page failed to load before browser cleanup completed.");
             SetLoadState(ReactLoadState.Failed, args.Request is null
                 ? "The React page failed to load."
                 : $"Navigation to '{args.Request}' failed.");
@@ -1208,6 +1432,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
         if (messageType == ReactBridgeMessages.ReactInvokeResult)
         {
             Dispatcher.UIThread.Post(() => HandleReactResult(payload));
+            return;
+        }
+
+        if (messageType == ReactBridgeMessages.ResourcesCleared)
+        {
+            Dispatcher.UIThread.Post(() => HandleResourceCleanupResult(payload));
             return;
         }
 

@@ -51,6 +51,7 @@ public sealed class ReactBridgeProtocolTests
     [InlineData(ReactBridgeMessages.ReactInvokeCancel)]
     [InlineData(ReactBridgeMessages.Theme)]
     [InlineData(ReactBridgeMessages.ThemeRequest)]
+    [InlineData(ReactBridgeMessages.ResourcesCleared)]
     [InlineData(ReactBridgeMessages.Error)]
     public void Recognizes_reserved_types(string type) => Assert.True(ReactBridgeProtocol.IsReserved(type));
 

@@ -33,6 +33,7 @@ internal static class AssemblyAssetExtractor
     private const string MarkerFileName = ".avalonia-react-extracted";
 
     private static readonly ConcurrentDictionary<string, Lazy<string>> Cache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, byte> ExtractionRoots = new(StringComparer.Ordinal);
 
     public static string Extract(
         Assembly assembly,
@@ -59,7 +60,9 @@ internal static class AssemblyAssetExtractor
             _ => new Lazy<string>(() => ExtractCore(assembly, prefix, root, marker, forceExtraction), LazyThreadSafetyMode.ExecutionAndPublication));
         try
         {
-            return lazy.Value;
+            var extractedRoot = lazy.Value;
+            ExtractionRoots.TryAdd(extractedRoot, 0);
+            return extractedRoot;
         }
         catch
         {
@@ -67,6 +70,14 @@ internal static class AssemblyAssetExtractor
             throw;
         }
     }
+
+    internal static IReadOnlyList<string> GetExtractionRoots() => [.. ExtractionRoots.Keys];
+
+    internal static void ForgetExtractionRoot(string root) => ExtractionRoots.TryRemove(root, out _);
+
+    internal static void ClearCachedResults() => Cache.Clear();
+
+    internal static string GetDefaultExtractionBase() => Path.Combine(Path.GetTempPath(), "avalonia-react");
 
     private static string ExtractCore(Assembly assembly, string prefix, string root, string marker, bool forceExtraction)
     {

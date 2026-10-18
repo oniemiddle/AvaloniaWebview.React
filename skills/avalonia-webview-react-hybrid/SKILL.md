@@ -299,6 +299,28 @@ second.Show();
 
 For an isolated window, assign `Session = ReactWebViewSession.CreateEphemeral()` before its WebView is created. Host API registrations remain per `ReactWebView`; shared storage does not share registered .NET APIs.
 
+## Reclaiming resources
+
+Clear browser data through the WebView, not ad-hoc JavaScript:
+
+```csharp
+var result = await ReactHost.ClearBrowserDataAsync(
+    ReactWebViewDataKind.BrowserStorage | ReactWebViewDataKind.Cookies);
+
+if (!result.IsSuccess)
+{
+    // result.Failed identifies the data groups; result.Warnings has details.
+}
+
+await ReactHost.ClearCookiesAsync();
+```
+
+- Script-visible storage requires a loaded page and only clears the current origin.
+- `CacheStorage` is the browser Cache API, not the platform HTTP cache.
+- Shared sessions mean the cleanup affects other windows using the same origin/profile.
+- `ReactHost.Shutdown()`/`Dispose()` releases the native WebView, queued work, and asset-server references.
+- Assembly-embedded assets are extracted to a temp directory; after shutting down those views call `await ReactWebViewResources.ClearExtractedAssetsAsync()`. It deletes all extraction roots registered by the process, including custom ones, and clears the extractor cache.
+
 ## Runtime availability preflight
 
 Call the static preflight before creating the first window when the app must show a friendly install message:

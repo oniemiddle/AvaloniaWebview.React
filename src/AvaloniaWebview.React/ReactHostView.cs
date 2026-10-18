@@ -349,6 +349,16 @@ public sealed class ReactHostView : Grid, IDisposable
     [RequiresDynamicCode("PostMessageAsync JSON serialization may require runtime code generation.")]
     public Task<string?> PostMessageAsync<T>(string type, T payload) => WebView.PostMessageAsync(type, payload);
 
+    /// <summary>Clears browser data owned by the native WebView.</summary>
+    public Task<ReactWebViewCleanupResult> ClearBrowserDataAsync(
+        ReactWebViewDataKind kinds = ReactWebViewDataKind.All,
+        CancellationToken cancellationToken = default) =>
+        WebView.ClearBrowserDataAsync(kinds, cancellationToken);
+
+    /// <summary>Clears cookies for the current WebView session.</summary>
+    public Task<ReactWebViewCleanupResult> ClearCookiesAsync(CancellationToken cancellationToken = default) =>
+        WebView.ClearCookiesAsync(cancellationToken);
+
     /// <summary>Invokes a handler registered by the React client.</summary>
     [RequiresUnreferencedCode("InvokeReactAsync serializes the payload with reflection-based System.Text.Json.")]
     [RequiresDynamicCode("InvokeReactAsync JSON serialization may require runtime code generation.")]

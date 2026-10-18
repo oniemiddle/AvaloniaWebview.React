@@ -391,6 +391,7 @@ The sample now demonstrates the 0.18 feature set end to end:
 - **Generated DTO/enum/list JSON** — `FrontendApi.d.ts` defines `RuntimeSnapshot`, `ServiceHealth`, and `getRuntimeSnapshot()`. The React "运行时快照" card renders the generated DTO, string enum, and string list; no handwritten `JsonSerializerContext` is needed.
 - **Multi-window** — "打开共享窗口" creates another `MainWindow` using `ReactWebViewSession.Shared` and the shared loopback asset server; the localStorage counter is shared between those windows. "打开隔离窗口" uses `ReactWebViewSession.CreateEphemeral()` and starts with its own storage.
 - **Runtime preflight** — the top status bar shows `ReactWebViewAvailability.Check()` output (engine, version, adapter), and the generated snapshot reports the same runtime information.
+- **Resource cleanup** — "清理浏览器存储" calls `ClearBrowserDataAsync(ReactWebViewDataKind.BrowserStorage)` and reports cleared/failed groups.
 - **Reparenting** — `ReactHostView` still preserves the native WebView across detach/attach by default.
 
 The service table is a separate dynamic module loaded only when requested. The "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
@@ -478,6 +479,44 @@ var privateHost = new ReactHostView
 `CreateEphemeral()` uses WebView2 InPrivate mode, a non-persistent WKWebView store, or a WebKitGTK ephemeral data manager where the platform supports it. Host API registrations are still per `ReactWebView`; register the APIs each window needs, or share application services. Shared browser storage does not grant a window access to another window's registered .NET APIs.
 
 The sample's native toolbar opens a shared window and an isolated window; setting `AVALONIA_REACT_MULTI_WINDOW=1` also opens a second shared window at startup.
+
+## Reclaiming resources
+
+The control exposes browser-data cleanup without shutting down the WebView:
+
+```csharp
+var result = await ReactHost.ClearBrowserDataAsync(
+    ReactWebViewDataKind.LocalStorage |
+    ReactWebViewDataKind.SessionStorage |
+    ReactWebViewDataKind.CacheStorage |
+    ReactWebViewDataKind.IndexedDb |
+    ReactWebViewDataKind.ServiceWorkers |
+    ReactWebViewDataKind.Cookies);
+
+if (!result.IsSuccess)
+{
+    // result.Failed says which groups failed; result.Warnings has details.
+}
+
+await ReactHost.ClearCookiesAsync();
+```
+
+- `Cookies` uses the native cookie manager.
+- Script-visible storage uses the loaded page and clears only the current origin.
+- `CacheStorage` clears the browser Cache API, not the engine's HTTP disk cache. HTTP cache and the browser profile are engine-managed; to purge them, close the WebView/session and remove the configured profile directory.
+- Shared sessions mean clearing data in one window affects other windows using the same origin/profile. Use an isolated `ReactWebViewSession` when that is not desired.
+- `ClearBrowserDataAsync` requires a loaded page for script-visible storage; cookie cleanup still works. Failures are reported per `ReactWebViewDataKind` rather than throwing.
+
+Assembly-embedded frontend files are extracted into a temporary directory. Clean that cache after the WebViews that use it have been shut down:
+
+```csharp
+await ReactWebViewResources.ClearExtractedAssetsAsync();
+
+// Or release a single WebView's native/browser resources:
+ReactHost.Shutdown();
+```
+
+`ClearExtractedAssetsAsync` deletes all extraction roots registered by this process, including a custom `AssemblyEmbeddedAssetOptions.ExtractionRoot`, and clears the extraction cache. Use `ReactHost.Shutdown()`/`Dispose()` to stop the WebView, queued bridge work, and the reference-counted asset server.
 
 ## Runtime availability preflight
 
