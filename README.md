@@ -90,6 +90,10 @@ npm install @avalonia-react/bridge
 
 It is ESM-only, includes TypeScript declarations, and forwards the reserved `avalonia:*` messages, host API calls, theme requests, JavaScript errors, cancellation, and timeouts. Inside this repository the sample uses the local package through `file:../../client`; run `npm --prefix client run build` before installing it.
 
+## Agent skill
+
+[`skills/avalonia-webview-react-hybrid`](skills/avalonia-webview-react-hybrid/SKILL.md) is an installable Agent Skill for teams using the library. It covers the hybrid architecture, contract-first host APIs, source modes, security boundaries, runtime diagnostics, multi-window reparenting, and trimming/AOT. See [`skills/README.md`](skills/README.md) for DSH, Claude Code, and Codex installation.
+
 ## Host a React development server
 
 Add the control to an Avalonia view. Point it to the Vite development server while developing, or let `SourceMode="Auto"` select the source. The included host uses Vite in Debug and embedded assets in Release; set `Source` or `SourceMode` to override both.
@@ -327,6 +331,7 @@ webView.BridgeReady += (_, _) => HideStartupOverlay();
 - `src/AvaloniaWebview.React.Vite`: optional Debug-time Vite server startup target.
 - `src/AvaloniaWebview.React.SourceGenerator`: C# interface generation from `.d.ts` declarations.
 - `client`: TypeScript helpers for sending and subscribing to bridge messages.
+- `skills`: installable Agent Skills for library users.
 - `samples/ReactHost` and `samples/react-app`: a runnable desktop and Vite example.
 
 ## Run the sample
