@@ -73,7 +73,7 @@ This starts a loopback HTTP server on an ephemeral port and serves `wwwroot` wit
 
 Configure the root directory, fallback file, or caching through `EmbeddedAssetOptions`. The server binds only to `127.0.0.1` and stops when the host window closes. Set `AVALONIA_REACT_EMBEDDED=1` in a Debug build to test the published path without switching to Release. On macOS and iOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
 
-On Windows, `EmbeddedAssetTransport.NativeHost` maps the asset folder to a WebView2 virtual host instead of opening a loopback port:
+On Windows, `EmbeddedAssetTransport.NativeHost` maps the asset folder to a WebView2 virtual host instead of opening a loopback port. It requires a Windows target framework such as `net10.0-windows`; the cross-platform `net10.0` build keeps using loopback:
 
 ```csharp
 reactView.UseEmbeddedAssets(options => options.Transport = EmbeddedAssetTransport.NativeHost);

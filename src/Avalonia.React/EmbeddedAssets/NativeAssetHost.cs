@@ -1,19 +1,26 @@
 using System.Runtime.InteropServices;
 using Avalonia.Platform;
 
-#pragma warning disable CA1416 // The type is used only after an OperatingSystem.IsWindows() check.
+#if WINDOWS
+
+#pragma warning disable CA1416 // This file is compiled only for Windows target frameworks.
 
 namespace Avalonia.React;
 
-// WebView2 does not raise WebResourceRequested for virtual-host requests, so route fallback is
-// intentionally left to the loopback transport. This transport only maps the asset folder.
+// Windows-only optimization: map the published asset folder to a WebView2 virtual host so the
+// WebView can load it without a loopback HTTP server. The cross-platform build still uses the
+// loopback transport, which also provides SPA route fallback.
 internal sealed class NativeAssetHost : IAssetTransport
 {
     private const int DenyCors = 2;
+    private const int SetVirtualHostNameToFolderMappingSlot = 71;
+
+    // ICoreWebView2_3 IID (WebView2.h). Querying it first guarantees that the runtime object
+    // actually implements the interface whose vtable layout is used below.
+    private static readonly Guid CoreWebView2_3Iid = new("A0D6DF20-3B92-416D-AA0C-437A9C727857");
 
     private readonly string _hostName;
     private readonly string _rootPath;
-    private ICoreWebView2_3? _webView;
 
     public NativeAssetHost(EmbeddedAssetOptions options)
     {
@@ -59,54 +66,84 @@ internal sealed class NativeAssetHost : IAssetTransport
             return false;
         }
 
-        var coreWebView2 = IntPtr.Zero;
-        try
-        {
-            coreWebView2 = webView2Handle.CoreWebView2;
-            if (coreWebView2 == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            var webView = (ICoreWebView2_3)Marshal.GetObjectForIUnknown(coreWebView2);
-            if (webView.SetVirtualHostNameToFolderMapping(_hostName, _rootPath, DenyCors) < 0)
-            {
-                Marshal.ReleaseComObject(webView);
-                return false;
-            }
-
-            _webView = webView;
-            return true;
-        }
-        catch (Exception exception) when (
-            exception is COMException or InvalidCastException or PlatformNotSupportedException or ObjectDisposedException)
+        var coreWebView2 = webView2Handle.CoreWebView2;
+        if (coreWebView2 == IntPtr.Zero)
         {
             return false;
         }
+
+        var iid = CoreWebView2_3Iid;
+        var queryResult = Marshal.QueryInterface(coreWebView2, in iid, out var webView3);
+        if (queryResult < 0 || webView3 == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        try
+        {
+            return TrySetVirtualHostNameToFolderMapping(webView3, _hostName, _rootPath);
+        }
         finally
         {
-            if (coreWebView2 != IntPtr.Zero)
+            Marshal.Release(webView3);
+        }
+    }
+
+    // ICoreWebView2_3 vtable, 0-based:
+    //   0-2   IUnknown (QueryInterface, AddRef, Release)
+    //   3-60  ICoreWebView2 (58 methods)
+    //   61-67 ICoreWebView2_2 (7 methods)
+    //   68    TrySuspend
+    //   69    Resume
+    //   70    get_IsSuspended
+    //   71    SetVirtualHostNameToFolderMapping   <-- used here
+    //   72    ClearVirtualHostNameToFolderMapping
+    // Source: Microsoft.Web.WebView2 build/native/include/WebView2.h. The interface version is
+    // fixed by the WebView2 contract, so the slot cannot move within a supported runtime.
+    private static unsafe bool TrySetVirtualHostNameToFolderMapping(IntPtr webView3, string hostName, string folderPath)
+    {
+        var vtable = *(IntPtr**)webView3;
+        if (vtable is null)
+        {
+            return false;
+        }
+
+        var functionPointer = vtable[SetVirtualHostNameToFolderMappingSlot];
+        if (functionPointer == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var hostPointer = Marshal.StringToCoTaskMemUni(hostName);
+        var folderPointer = Marshal.StringToCoTaskMemUni(folderPath);
+        try
+        {
+            if (hostPointer == IntPtr.Zero || folderPointer == IntPtr.Zero)
             {
-                Marshal.Release(coreWebView2);
+                return false;
+            }
+
+            // STDMETHODCALLTYPE: stdcall on x86, the platform default on x64.
+            var setMapping = (delegate* unmanaged[Stdcall]<IntPtr, char*, char*, int, int>)functionPointer;
+            return setMapping(webView3, (char*)hostPointer, (char*)folderPointer, DenyCors) >= 0;
+        }
+        finally
+        {
+            if (hostPointer != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(hostPointer);
+            }
+
+            if (folderPointer != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(folderPointer);
             }
         }
     }
 
     public ValueTask DisposeAsync()
     {
-        var webView = _webView;
-        _webView = null;
-        if (webView is not null)
-        {
-            try
-            {
-                Marshal.ReleaseComObject(webView);
-            }
-            catch (Exception)
-            {
-            }
-        }
-
+        // The mapping belongs to the CoreWebView2 instance and is released with it.
         return ValueTask.CompletedTask;
     }
 
@@ -118,3 +155,5 @@ internal sealed class NativeAssetHost : IAssetTransport
         !hostName.EndsWith('.') &&
         hostName.All(character => char.IsLetterOrDigit(character) || character is '-' or '.');
 }
+
+#endif

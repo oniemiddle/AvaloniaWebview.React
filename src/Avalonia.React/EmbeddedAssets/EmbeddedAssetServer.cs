@@ -13,10 +13,10 @@ public enum EmbeddedAssetTransport
     /// <summary>Serves files from a loopback HTTP server. Works on all platforms and supports SPA fallback.</summary>
     Loopback,
 
-    /// <summary>Maps the asset folder to a WebView2 virtual host. Windows only, no loopback port, no SPA fallback.</summary>
+    /// <summary>Maps the asset folder to a WebView2 virtual host. Requires a Windows target framework; no loopback port, no SPA fallback.</summary>
     NativeHost,
 
-    /// <summary>Uses the native virtual host on Windows and the loopback server on other platforms.</summary>
+    /// <summary>Uses the native virtual host on Windows target frameworks and the loopback server otherwise.</summary>
     Auto,
 }
 
