@@ -36,6 +36,8 @@ const required = [
   "LICENSE",
   "dist/index.js",
   "dist/index.d.ts",
+  "dist/react.js",
+  "dist/react.d.ts",
 ];
 
 for (const file of required) {

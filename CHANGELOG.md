@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- React integration hooks under `@avalonia-react/bridge/react`: `useHostApi`,
+  `useHostApiInvoke`, `useAvaloniaMessage`, `useHostTheme`, `useSignalReady`, and
+  `useBridgeAvailable`. React is an optional peer dependency; the core bridge remains usable without it.
+
 ## [0.17.0] - 2026-10-18
 
 ### Changed

@@ -194,6 +194,36 @@ unsubscribe();
 - `BridgeReady`, `LoadStateChanged`, `BridgeError`, and `JavaScriptError` are the main host observability events.
 - `BridgeError` reports exceptions thrown by application `MessageReceived` handlers instead of escaping the WebView event loop.
 
+### React hooks
+
+The npm package exposes a React subpath so hooks are optional for non-React pages:
+
+```tsx
+import {
+  useAvaloniaMessage,
+  useHostApi,
+  useHostApiInvoke,
+  useHostTheme,
+  useSignalReady,
+} from "@avalonia-react/bridge/react";
+
+const hostApi = useHostApi<HostApi>("HostApi");
+const greetings = useHostApiInvoke<string>("HostApi", "getGreeting");
+const theme = useHostTheme();
+
+useAvaloniaMessage<{ at: string }>("account:changed", payload => console.log(payload.at));
+useSignalReady({ mounted: true });
+```
+
+- `useHostApi` returns a stable typed proxy.
+- `useAvaloniaMessage` handles subscribe/unsubscribe and the latest handler.
+- `useHostTheme` requests the current theme on mount.
+- `useSignalReady` sends the ready handshake after mount.
+- `useHostApiInvoke` provides `data`, `error`, `loading`, `invoke`, `cancel`, and cancels the previous call.
+- `useBridgeAvailable` reports whether the page is inside Avalonia.
+
+`react` is an optional peer dependency; importing `/react` requires React 18+.
+
 ## Security boundaries
 
 Host APIs are origin-gated by default:

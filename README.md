@@ -88,7 +88,7 @@ The frontend bridge is published as `@avalonia-react/bridge`:
 npm install @avalonia-react/bridge
 ```
 
-It is ESM-only, includes TypeScript declarations, and forwards the reserved `avalonia:*` messages, host API calls, theme requests, JavaScript errors, cancellation, and timeouts. Inside this repository the sample uses the local package through `file:../../client`; run `npm --prefix client run build` before installing it.
+It is ESM-only, includes TypeScript declarations, and forwards the reserved `avalonia:*` messages, host API calls, theme requests, JavaScript errors, cancellation, and timeouts. React projects can use `@avalonia-react/bridge/react` for `useHostApi`, `useHostApiInvoke`, `useAvaloniaMessage`, `useHostTheme`, `useSignalReady`, and `useBridgeAvailable`. Inside this repository the sample uses the local package through `file:../../client`; run `npm --prefix client run build` before installing it.
 
 ## Agent skill
 

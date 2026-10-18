@@ -110,6 +110,36 @@ requestAnimationFrame(() => signalReady("react"));
 
 `signalReady` accepts any JSON payload; the `"react"` argument can be omitted or replaced with app metadata.
 
+### React hook variant
+
+```tsx
+import {
+  useAvaloniaMessage,
+  useHostApi,
+  useHostApiInvoke,
+  useHostTheme,
+  useSignalReady,
+} from "@avalonia-react/bridge/react";
+import type { HostApi } from "./FrontendApi";
+
+export function HostPanel() {
+  const hostApi = useHostApi<HostApi>("HostApi");
+  const greeting = useHostApiInvoke<string>("HostApi", "getGreeting");
+  const theme = useHostTheme();
+
+  useAvaloniaMessage<{ at: string }>("react:ack", payload => console.log(payload.at));
+  useSignalReady({ mounted: true });
+
+  return (
+    <button data-theme={theme} onClick={() => void greeting.invoke("Ada")}>
+      {greeting.data ?? "Greet"}
+    </button>
+  );
+}
+```
+
+`react` is an optional peer dependency; non-React pages can keep importing the root package only.
+
 ## DTOs and enums
 
 ```ts

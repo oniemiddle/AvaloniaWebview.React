@@ -45,10 +45,51 @@ const value = await invokeHostApiWithOptions<string>(
 
 When a call times out, is aborted, or the page unloads, the client also sends the reserved `avalonia:invoke:cancel` message so the host can cancel the implementation's `CancellationToken`. Calls rejected because the host page unloads reject with an `Error` instead of staying pending forever. `isBridgeAvailable()` tells whether the page runs inside Avalonia's WebView, and `bridgeMessageTypes` lists the reserved bridge message names.
 
+### React hooks
+
+React users can import hooks from the `/react` subpath. React is an optional peer dependency; the core bridge remains usable without it.
+
+```tsx
+import {
+  useAvaloniaMessage,
+  useHostApi,
+  useHostApiInvoke,
+  useHostTheme,
+  useSignalReady,
+} from "@avalonia-react/bridge/react";
+import type { HostApi } from "./FrontendApi";
+
+export function HostPanel() {
+  const hostApi = useHostApi<HostApi>("HostApi");
+  const { invoke, data, error, loading, cancel } = useHostApiInvoke<string>("HostApi", "getGreeting");
+  const theme = useHostTheme();
+
+  useAvaloniaMessage<{ at: string }>("react:ack", payload => console.log(payload.at));
+  useSignalReady({ mounted: true });
+
+  return (
+    <section data-theme={theme}>
+      <button onClick={() => void invoke("Ada")}>Call host</button>
+      {loading && <span>Loading…</span>}
+      {error && <span>{error.message}</span>}
+      {data && <strong>{data}</strong>}
+      {loading && <button onClick={cancel}>Cancel</button>}
+    </section>
+  );
+}
+```
+
+- `useHostApi(api)` returns a stable typed proxy.
+- `useAvaloniaMessage(type, handler)` subscribes/unsubscribes automatically and keeps the latest handler.
+- `useHostTheme()` requests the current theme on mount and returns `"light"`/`"dark"`/`null`.
+- `useSignalReady(payload?)` calls `signalReady()` after mount.
+- `useHostApiInvoke(api, method, options?)` exposes `data`, `error`, `loading`, `invoke`, and `cancel`; a new call cancels the previous one and cleanup aborts pending work.
+- `useBridgeAvailable()` reports whether the page is inside Avalonia's WebView.
+
 The client also forwards `window` errors and unhandled promise rejections as the reserved `avalonia:error` message, which raises `AvaloniaReactWebView.JavaScriptError` on the host. Duplicate errors are reported at most once, and reporting is disabled when the bridge is unavailable.
 
 The message format is `{ "type": string, "payload": any JSON value }`. API calls use a request ID and return either a result or an error through the same message bridge.
 
-The module can be imported in Node/SSR environments without a `window`; `isBridgeAvailable()` then returns `false`, and `subscribe()` returns a no-op unsubscribe function. The package is ESM-only and includes `dist/index.d.ts` alongside `dist/index.js`.
+The module can be imported in Node/SSR environments without a `window`; `isBridgeAvailable()` then returns `false`, and `subscribe()` returns a no-op unsubscribe function. The package is ESM-only and includes `dist/index.d.ts`/`dist/react.d.ts` alongside the JavaScript builds.
 
 Maintainers can validate the publishable tarball with `npm run verify:package`; see [RELEASING.md](https://github.com/oniemiddle/AvaloniaWebview.React/blob/main/RELEASING.md) for the full release checklist.

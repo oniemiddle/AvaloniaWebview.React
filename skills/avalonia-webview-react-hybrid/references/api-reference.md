@@ -140,6 +140,29 @@ export const bridgeMessageTypes = {
 
 The module is ESM-only and safe to import without a browser `window`; `isBridgeAvailable()` is `false`, and `subscribe()` returns a no-op unsubscribe. The package is SSR-safe by design.
 
+### React hooks (`@avalonia-react/bridge/react`)
+
+```ts
+export function useHostApi<T extends object>(api: string): T;
+export function useAvaloniaMessage<T>(type: string, handler: (payload: T) => void): void;
+export function useBridgeAvailable(): boolean;
+export function useHostTheme(): "light" | "dark" | null;
+export function useSignalReady<T = Record<string, never>>(payload?: T): boolean;
+export function useHostApiInvoke<T>(
+  api: string,
+  method: string,
+  options?: { timeoutMs?: number; signal?: AbortSignal },
+): {
+  data: T | null;
+  error: Error | null;
+  loading: boolean;
+  invoke: (...args: unknown[]) => Promise<T>;
+  cancel: () => void;
+};
+```
+
+`react` is an optional peer dependency. The hooks follow React 18+ rules; effects/subscriptions run in the browser host, and server rendering differs only in that effects do not execute.
+
 ## Bridge protocol
 
 Messages are JSON objects with this envelope:
