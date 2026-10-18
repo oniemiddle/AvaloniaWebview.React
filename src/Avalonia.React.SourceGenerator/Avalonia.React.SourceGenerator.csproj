@@ -6,7 +6,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <IsRoslynComponent>true</IsRoslynComponent>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-    <PackageId>Avalonia.React.SourceGenerator</PackageId>
+    <PackageId>AvaloniaWebview.React.SourceGenerator</PackageId>
     <Version>$(AvaloniaReactVersion)</Version>
     <Authors>Avalonia.React contributors</Authors>
     <Description>Generates C# API interfaces from TypeScript declaration files for Avalonia.React.</Description>
@@ -28,7 +28,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
     <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers\dotnet\cs\Avalonia.React.SourceGenerator.dll" Visible="false" />
-    <None Update="build\Avalonia.React.SourceGenerator.props" Pack="true" PackagePath="buildTransitive\Avalonia.React.SourceGenerator.props" />
+    <None Update="build\Avalonia.React.SourceGenerator.props" Pack="true" PackagePath="buildTransitive\AvaloniaWebview.React.SourceGenerator.props" />
     <None Include="README.md" Pack="true" PackagePath="README.md" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />

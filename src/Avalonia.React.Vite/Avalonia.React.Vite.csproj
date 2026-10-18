@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <PackageId>Avalonia.React.Vite</PackageId>
+    <PackageId>AvaloniaWebview.React.Vite</PackageId>
     <Version>$(AvaloniaReactVersion)</Version>
     <Authors>Avalonia.React contributors</Authors>
     <Description>Vite development server integration for Avalonia.React desktop apps.</Description>
@@ -18,7 +18,7 @@
     <IncludeSymbols>false</IncludeSymbols>
   </PropertyGroup>
   <ItemGroup>
-    <None Update="build\Avalonia.React.Vite.targets" Pack="true" PackagePath="buildTransitive\Avalonia.React.Vite.targets" />
+    <None Update="build\Avalonia.React.Vite.targets" Pack="true" PackagePath="buildTransitive\AvaloniaWebview.React.Vite.targets" />
     <None Include="README.md" Pack="true" PackagePath="README.md" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
   </ItemGroup>

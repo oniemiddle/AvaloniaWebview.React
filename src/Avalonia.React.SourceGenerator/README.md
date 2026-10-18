@@ -124,4 +124,4 @@ const users = await hostApi.findUsers(10);
 
 The bridge returns the .NET task result or rejects with its error message. `invokeHostApi<string>("HostApi", "getGreeting", "Ada")` remains available for code that cannot use the proxy.
 
-The generated attributes come from the `Avalonia.React` package, so install it alongside this analyzer.
+The generated attributes come from the `AvaloniaWebview.React` package, so install it alongside this analyzer.

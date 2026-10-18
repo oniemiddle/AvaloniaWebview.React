@@ -5,7 +5,7 @@ A small .NET 10 toolkit for hosting a React frontend in Avalonia 12 with Avaloni
 ## Install
 
 ```sh
-dotnet add package Avalonia.React
+dotnet add package AvaloniaWebview.React
 ```
 
 The package references `Avalonia.Controls.WebView` 12.1.0. Windows uses WebView2, macOS uses the system WKWebView, and Linux needs the WebKitGTK or WPE WebKit runtime. The browser runtime is provided by the operating system; Chromium is not bundled.
@@ -17,7 +17,7 @@ The main package also imports an MSBuild frontend build target. When the consumi
 For Vite development, install the optional extension:
 
 ```sh
-dotnet add package Avalonia.React.Vite
+dotnet add package AvaloniaWebview.React.Vite
 ```
 
 In Debug builds it checks the configured Vite server before the .NET build, starts it when needed, and waits for the server to accept connections before continuing. Visual Studio's fast up-to-date check is disabled for Debug when this auto-start target applies, so each F5 verifies/restarts Vite if its process exited after the previous debug session. This adds a no-op MSBuild check to each Debug launch. Set `AvaloniaReactDevServerDirectory` to the React project directory; `AvaloniaReactDevServerUrl`, `AvaloniaReactDevServerCommand`, and `AvaloniaReactAutoStart` can override the defaults. Set `AvaloniaReactDevServerWarmupPath` to a frequently used client entry (for example, `src/main.tsx`) to wait until Vite has transformed it before launching the host. Node.js and npm must be installed, and frontend dependencies must be available.
@@ -25,7 +25,7 @@ In Debug builds it checks the configured Vite server before the .NET build, star
 To generate C# interfaces from TypeScript API contracts, install:
 
 ```sh
-dotnet add package Avalonia.React.SourceGenerator
+dotnet add package AvaloniaWebview.React.SourceGenerator
 ```
 
 Add an exported interface in a `.d.ts` file under the .NET project. For example:

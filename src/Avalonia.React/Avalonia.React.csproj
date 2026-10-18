@@ -2,7 +2,7 @@
   <PropertyGroup>
     <AssemblyName>Avalonia.React</AssemblyName>
     <RootNamespace>Avalonia.React</RootNamespace>
-    <PackageId>Avalonia.React</PackageId>
+    <PackageId>AvaloniaWebview.React</PackageId>
     <Version>$(AvaloniaReactVersion)</Version>
     <Authors>Avalonia.React contributors</Authors>
     <Description>Build React frontends hosted in Avalonia 12 using Avalonia's native WebView and a typed JavaScript bridge.</Description>
@@ -24,7 +24,7 @@
     <PackageReference Include="Avalonia.Controls.WebView" Version="$(AvaloniaVersion)" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
-    <None Include="build\Avalonia.React.targets" Pack="true" PackagePath="buildTransitive\Avalonia.React.targets" />
+    <None Include="build\Avalonia.React.targets" Pack="true" PackagePath="buildTransitive\AvaloniaWebview.React.targets" />
     <InternalsVisibleTo Include="Avalonia.React.Tests" />
   </ItemGroup>
 </Project>

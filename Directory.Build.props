@@ -3,7 +3,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AvaloniaVersion>12.1.0</AvaloniaVersion>
-    <AvaloniaReactVersion>0.16.0</AvaloniaReactVersion>
+    <AvaloniaReactVersion>0.16.1</AvaloniaReactVersion>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <IncludeSymbols>true</IncludeSymbols>

@@ -15,21 +15,21 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 }
 
 $expected = [ordered]@{
-    "Avalonia.React" = @(
+    "AvaloniaWebview.React" = @(
         "lib/net10.0/Avalonia.React.dll",
         "lib/net10.0/Avalonia.React.xml",
-        "buildTransitive/Avalonia.React.targets",
+        "buildTransitive/AvaloniaWebview.React.targets",
         "README.md",
         "LICENSE"
     )
-    "Avalonia.React.SourceGenerator" = @(
+    "AvaloniaWebview.React.SourceGenerator" = @(
         "analyzers/dotnet/cs/Avalonia.React.SourceGenerator.dll",
-        "buildTransitive/Avalonia.React.SourceGenerator.props",
+        "buildTransitive/AvaloniaWebview.React.SourceGenerator.props",
         "README.md",
         "LICENSE"
     )
-    "Avalonia.React.Vite" = @(
-        "buildTransitive/Avalonia.React.Vite.targets",
+    "AvaloniaWebview.React.Vite" = @(
+        "buildTransitive/AvaloniaWebview.React.Vite.targets",
         "README.md",
         "LICENSE"
     )

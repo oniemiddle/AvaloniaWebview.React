@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-10-18
+
+### Changed
+
+- Renamed the NuGet package IDs to `AvaloniaWebview.React`, `AvaloniaWebview.React.Vite`, and
+  `AvaloniaWebview.React.SourceGenerator`. The previous `Avalonia.*` IDs are blocked by nuget.org's
+  reserved package ID prefix for AvaloniaUI, so 0.16.0 was never published.
+- Package version is `0.16.1`; client version is `0.16.1`.
+
 ## [0.16.0] - 2026-10-18
 
 ### Added

@@ -2,9 +2,9 @@
 
 Avalonia.React publishes three NuGet packages and one npm package:
 
-- `Avalonia.React`
-- `Avalonia.React.Vite`
-- `Avalonia.React.SourceGenerator`
+- `AvaloniaWebview.React`
+- `AvaloniaWebview.React.Vite`
+- `AvaloniaWebview.React.SourceGenerator`
 - `@avalonia-react/bridge`
 
 ## Versioning
@@ -71,9 +71,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File eng/verify-nuget-packages.ps1
 
 ## Package contents
 
-- `Avalonia.React` — `lib/net10.0`, build-transitive targets, README, LICENSE.
-- `Avalonia.React.Vite` — build-transitive targets only, README, LICENSE.
-- `Avalonia.React.SourceGenerator` — Roslyn analyzer, build-transitive props, README, LICENSE.
+- `AvaloniaWebview.React` — `lib/net10.0`, build-transitive targets, README, LICENSE.
+- `AvaloniaWebview.React.Vite` — build-transitive targets only, README, LICENSE.
+- `AvaloniaWebview.React.SourceGenerator` — Roslyn analyzer, build-transitive props, README, LICENSE.
 - `@avalonia-react/bridge` — ESM `dist/index.js`, `dist/index.d.ts`, README, LICENSE; no source, tests, or dependencies.
 
 Publishing the `@avalonia-react` scope requires that the npm organization already exists and the token has access. The package is ESM-only and requires Node 18 or a compatible bundler.
