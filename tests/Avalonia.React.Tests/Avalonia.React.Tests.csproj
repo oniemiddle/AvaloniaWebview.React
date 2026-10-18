@@ -22,4 +22,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="TestAssets\index.html" LogicalName="Avalonia.React.Assets/index.html" />
+    <EmbeddedResource Include="TestAssets\assets\app.js" LogicalName="Avalonia.React.Assets/assets/app.js" />
+  </ItemGroup>
+
 </Project>

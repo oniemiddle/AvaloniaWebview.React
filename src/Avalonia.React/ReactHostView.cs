@@ -258,6 +258,12 @@ public sealed class ReactHostView : Grid, IDisposable
     /// <summary>Starts serving a published frontend and navigates to it.</summary>
     public Uri UseEmbeddedAssets(Action<EmbeddedAssetOptions>? configure = null) => WebView.UseEmbeddedAssets(configure);
 
+    /// <summary>Extracts frontend files embedded in the host assembly and navigates to them.</summary>
+    public Uri UseAssemblyEmbeddedAssets(
+        Action<AssemblyEmbeddedAssetOptions>? configureExtraction = null,
+        Action<EmbeddedAssetOptions>? configureServer = null) =>
+        WebView.UseAssemblyEmbeddedAssets(configureExtraction, configureServer);
+
     private void HandleLoadStateChanged(object? sender, ReactLoadStateChangedEventArgs args)
     {
         _overlayTimedOut = false;

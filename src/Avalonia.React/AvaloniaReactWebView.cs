@@ -215,6 +215,35 @@ public sealed class AvaloniaReactWebView : NativeWebView
     }
 
     /// <summary>
+    /// Extracts frontend files embedded in the host assembly and serves them through the loopback asset
+    /// server. Enable embedding with the <c>AvaloniaReactEmbedAssetsInAssembly</c> project property;
+    /// extraction happens once per assembly build.
+    /// </summary>
+    /// <param name="configureExtraction">Configures the source assembly, resource prefix, or extraction directory.</param>
+    /// <param name="configureServer">Configures the asset server after the extraction root is set.</param>
+    /// <returns>The URI that the WebView navigates to.</returns>
+    public Uri UseAssemblyEmbeddedAssets(
+        Action<AssemblyEmbeddedAssetOptions>? configureExtraction = null,
+        Action<EmbeddedAssetOptions>? configureServer = null)
+    {
+        ThrowIfShutdown();
+        var extraction = new AssemblyEmbeddedAssetOptions();
+        configureExtraction?.Invoke(extraction);
+        var assembly = extraction.Assembly ?? Assembly.GetEntryAssembly() ?? typeof(AvaloniaReactWebView).Assembly;
+        var root = AssemblyAssetExtractor.Extract(
+            assembly,
+            extraction.ResourcePrefix,
+            extraction.ExtractionRoot,
+            extraction.ForceExtraction);
+
+        return UseEmbeddedAssets(options =>
+        {
+            options.RootPath = root;
+            configureServer?.Invoke(options);
+        });
+    }
+
+    /// <summary>
     /// Applies <see cref="SourceMode"/> immediately. This is called automatically when the control enters the
     /// visual tree; call it explicitly only when configuring the control after it is already attached.
     /// </summary>
@@ -250,6 +279,19 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
                         options.Transport = EmbeddedAssetsTransport;
                     });
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    _sourceConfigured = false;
+                    SetLoadState(ReactLoadState.Failed, exception.Message);
+                    return false;
+                }
+
+            case ReactSourceMode.AssemblyEmbeddedAssets:
+                try
+                {
+                    UseAssemblyEmbeddedAssets();
                     return true;
                 }
                 catch (Exception exception)

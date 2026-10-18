@@ -14,6 +14,9 @@ public enum ReactSourceMode
     /// <summary>Serves the published frontend from <c>wwwroot</c> or <see cref="AvaloniaReactWebView.EmbeddedAssetsRoot"/>.</summary>
     EmbeddedAssets,
 
+    /// <summary>Extracts and serves frontend files embedded in the host assembly by the MSBuild targets.</summary>
+    AssemblyEmbeddedAssets,
+
     /// <summary>
     /// Uses build-time defaults emitted by the Avalonia.React MSBuild targets: the Vite server for Debug
     /// builds and embedded assets otherwise. Falls back to <see cref="DevServer"/> when no metadata exists

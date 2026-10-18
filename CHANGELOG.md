@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-10-18
+
+### Added
+
+- Assembly-embedded frontend assets for single-file and installer deployments. Set
+  `AvaloniaReactEmbedAssetsInAssembly=true` and the MSBuild target embeds the built `dist` folder as
+  manifest resources with the `Avalonia.React.Assets/` prefix before compilation.
+- `UseAssemblyEmbeddedAssets` plus `AssemblyEmbeddedAssetOptions` (`Assembly`, `ResourcePrefix`,
+  `ExtractionRoot`, `ForceExtraction`). Files are extracted once per assembly build to a versioned
+  directory and served by the loopback server; `ReactHostView` forwards the method.
+- `ReactSourceMode.AssemblyEmbeddedAssets`. In Release, `SourceMode="Auto"` chooses it when the
+  embedding property is enabled, so no application code is needed.
+- Extraction is thread-safe and cached; custom extraction roots and resource prefixes are supported.
+
+### Changed
+
+- Package version is `0.8.0`.
+- Control tests now include extractor and source-mode coverage (87 tests).
+
+### Documentation
+
+- Documented the embedding property, extraction behavior, and the single-file deployment workflow.
+
 ## [0.7.0] - 2026-10-18
 
 ### Added

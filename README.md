@@ -80,7 +80,7 @@ Start the frontend with `npm run dev -- --host 0.0.0.0`. Keep the Vite port in s
                             EnableWindowsOffscreenComposition="True" />
 ```
 
-The Avalonia.React MSBuild targets emit assembly metadata into the host executable: Debug builds resolve `Auto` to the Vite server, other configurations resolve to embedded assets. Override the defaults with `AvaloniaReactDefaultSourceMode`, `AvaloniaReactDevServerUrl`, or `AvaloniaReactEnableDevTools`, or set `SourceMode` to `Manual`, `DevServer`, or `EmbeddedAssets`. Set `AvaloniaReactEmitAssemblyMetadata=false` to opt out of the generated metadata. `Source` is only assigned when the control enters the visual tree, so the source can be configured from XAML or a constructor.
+The Avalonia.React MSBuild targets emit assembly metadata into the host executable: Debug builds resolve `Auto` to the Vite server, other configurations resolve to embedded assets (or `AssemblyEmbeddedAssets` when `AvaloniaReactEmbedAssetsInAssembly` is enabled). Override the defaults with `AvaloniaReactDefaultSourceMode`, `AvaloniaReactDevServerUrl`, or `AvaloniaReactEnableDevTools`, or set `SourceMode` to `Manual`, `DevServer`, `EmbeddedAssets`, or `AssemblyEmbeddedAssets`. Set `AvaloniaReactEmitAssemblyMetadata=false` to opt out of the generated metadata. `Source` is only assigned when the control enters the visual tree, so the source can be configured from XAML or a constructor.
 
 ### Use the built-in host view
 
@@ -152,6 +152,28 @@ reactView.UseEmbeddedAssets(options => options.Transport = EmbeddedAssetTranspor
 ```
 
 The host defaults to `https://avalonia-react.local/` and can be changed with `NativeHostName`. It serves static files only; SPA route fallback still requires the default loopback transport. WebView2 does not raise `WebResourceRequested` for virtual-host requests, so the native host cannot implement route fallback itself. Set `Transport = EmbeddedAssetTransport.Auto` to use the native host on Windows and the loopback server on other platforms. macOS and Linux native scheme handlers are not implemented: WKURLSchemeHandler must be registered before the WKWebView is created, but Avalonia only exposes the existing web view; Linux native scheme serving needs additional GIO interop. Both platforms continue to use loopback HTTP. Set `EmbeddedAssetsTransport="NativeHost"` (or `Auto`) on the control to test the native transport.
+
+### Embed assets in the assembly
+
+For single-file or installer deployments, embed the built frontend in the host assembly instead of shipping a `wwwroot` folder:
+
+```xml
+<PropertyGroup>
+  <AvaloniaReactEmbedAssetsInAssembly>true</AvaloniaReactEmbedAssetsInAssembly>
+</PropertyGroup>
+```
+
+The MSBuild target embeds `$(AvaloniaReactProjectDirectory)\dist\**` as manifest resources with the `Avalonia.React.Assets/` prefix before compilation (it runs the frontend build when it is enabled). In Release builds, `SourceMode="Auto"` resolves to `AssemblyEmbeddedAssets`: on startup the resources are extracted to a versioned directory under the system temporary directory and served by the loopback server, so no frontend files need to ship beside the executable. The extraction directory is reused across launches and changes when the assembly build changes.
+
+Call `UseAssemblyEmbeddedAssets` directly when the source mode should not use build metadata:
+
+```csharp
+reactView.UseAssemblyEmbeddedAssets(
+    extraction => extraction.ExtractionRoot = Path.Combine(AppContext.BaseDirectory, "react-cache"),
+    server => server.EnableCaching = true);
+```
+
+`AssemblyEmbeddedAssetOptions` also exposes `Assembly`, `ResourcePrefix`, and `ForceExtraction`. When overriding `AvaloniaReactAssemblyAssetPrefix`, pass the same value to `ResourcePrefix`.
 
 ## React to Avalonia messages
 

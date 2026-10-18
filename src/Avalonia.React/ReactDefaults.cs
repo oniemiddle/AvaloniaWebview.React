@@ -80,7 +80,7 @@ internal static class ReactSourceResolver
         }
 
         if (Enum.TryParse<ReactSourceMode>(metadataSourceMode, ignoreCase: true, out var metadataMode) &&
-            metadataMode is ReactSourceMode.DevServer or ReactSourceMode.EmbeddedAssets)
+            metadataMode is ReactSourceMode.DevServer or ReactSourceMode.EmbeddedAssets or ReactSourceMode.AssemblyEmbeddedAssets)
         {
             return metadataMode;
         }

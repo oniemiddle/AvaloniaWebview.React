@@ -26,6 +26,7 @@ public sealed class ReactSourceResolverTests
     [Theory]
     [InlineData("DevServer", ReactSourceMode.DevServer)]
     [InlineData("EmbeddedAssets", ReactSourceMode.EmbeddedAssets)]
+    [InlineData("AssemblyEmbeddedAssets", ReactSourceMode.AssemblyEmbeddedAssets)]
     [InlineData("devserver", ReactSourceMode.DevServer)]
     public void Auto_uses_build_metadata(string metadata, ReactSourceMode expected) =>
         Assert.Equal(
