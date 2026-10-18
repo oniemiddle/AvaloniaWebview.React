@@ -86,7 +86,7 @@ internal static class AssemblyAssetExtractor
             .Select(resource => new
             {
                 resource.Name,
-                Relative = resource.Normalized.Substring(prefix.Length),
+                Relative = resource.Normalized[prefix.Length..],
             })
             .Where(resource => resource.Relative.Length > 0)
             .ToArray();

@@ -550,7 +550,7 @@ public sealed class EmbeddedAssetServer : IAssetTransport
         var value = ifRange.Trim();
         if (value.StartsWith("W/", StringComparison.OrdinalIgnoreCase))
         {
-            value = value.Substring(2).Trim();
+            value = value[2..].Trim();
         }
 
         if (value.StartsWith('"'))
@@ -578,7 +578,7 @@ public sealed class EmbeddedAssetServer : IAssetTransport
 
             if (value.StartsWith("W/", StringComparison.OrdinalIgnoreCase))
             {
-                value = value.Substring(2).Trim();
+                value = value[2..].Trim();
             }
 
             if (string.Equals(value, etag, StringComparison.Ordinal))

@@ -10,8 +10,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
-        ReactHost.RegisterApi<IHostApi>(new HostApi());
-        ReactHost.MessageReceived += HandleMessageReceived;
+        HostApiBridge.Register(ReactHost.WebView, new HostApi());
     }
 
     private void HandleMessageReceived(object? sender, ReactMessageReceivedEventArgs message)

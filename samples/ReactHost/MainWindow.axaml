@@ -16,5 +16,6 @@
                        LoadingText="正在启动 Avalonia + React…"
                        RetryText="重试加载"
                        ErrorTextFormat="页面加载失败：{0}"
+                       MessageReceived="HandleMessageReceived"
                        Background="{DynamicResource SemiColorBackground0}" />
 </Window>
