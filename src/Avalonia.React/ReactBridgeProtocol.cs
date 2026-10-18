@@ -38,9 +38,16 @@ internal static class ReactBridgeProtocol
             }
 
             type = parsedType;
-            payload = root.TryGetProperty("payload", out var payloadElement)
-                ? payloadElement.Clone()
-                : JsonSerializer.SerializeToElement<object?>(null);
+            if (root.TryGetProperty("payload", out var payloadElement))
+            {
+                payload = payloadElement.Clone();
+            }
+            else
+            {
+                using var nullDocument = JsonDocument.Parse("null");
+                payload = nullDocument.RootElement.Clone();
+            }
+
             return true;
         }
         catch (JsonException)
@@ -48,6 +55,13 @@ internal static class ReactBridgeProtocol
             return false;
         }
     }
+
+    /// <summary>Builds the JavaScript used to deliver a host message to the React client.</summary>
+    public static string CreateDomainEventScript(string type, string payloadJson) =>
+        $"window.dispatchEvent(new CustomEvent('{ReactBridgeMessages.DomainEventName}', {{ detail: {{ type: {QuoteJson(type)}, payload: {payloadJson} }} }}));";
+
+    /// <summary>Encodes a string as a JSON string literal.</summary>
+    public static string QuoteJson(string value) => "\"" + JsonEncodedText.Encode(value).ToString() + "\"";
 
     /// <summary>Returns whether a message type is reserved by the bridge.</summary>
     public static bool IsReserved(string type) =>

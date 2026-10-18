@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Platform;
@@ -33,6 +34,8 @@ public sealed class ReactHostView : Grid, IDisposable
         {
             // The built-in overlay must compose above WebView2 on Windows; other platforms ignore this.
             EnableWindowsOffscreenComposition = true,
+            // Tabs and windows commonly move the control; keep the native WebView alive across the move.
+            PreserveWebViewOnDetach = true,
         };
         Children.Add(WebView);
 
@@ -48,13 +51,13 @@ public sealed class ReactHostView : Grid, IDisposable
             Text = LoadingText,
             TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
             MaxWidth = 520,
         };
         _retryButton = new Button
         {
             Content = RetryText,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
             IsVisible = false,
         };
         _retryButton.Click += (_, _) => WebView.Reload();
@@ -62,8 +65,8 @@ public sealed class ReactHostView : Grid, IDisposable
         _overlayPanel = new StackPanel
         {
             Spacing = 16,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
                 _loadingIndicator,
@@ -140,6 +143,30 @@ public sealed class ReactHostView : Grid, IDisposable
     {
         get => WebView.EnableDevTools;
         set => WebView.EnableDevTools = value;
+    }
+
+    /// <summary>
+    /// Gets or sets whether the native WebView survives detaching from the visual tree so it can be
+    /// reattached in another window or tab without losing page state. Defaults to <see langword="true"/>.
+    /// </summary>
+    public bool PreserveWebViewOnDetach
+    {
+        get => WebView.PreserveWebViewOnDetach;
+        set => WebView.PreserveWebViewOnDetach = value;
+    }
+
+    /// <summary>Gets or sets how long a detached native WebView is preserved before it is destroyed.</summary>
+    public TimeSpan ReparentingTimeout
+    {
+        get => WebView.ReparentingTimeout;
+        set => WebView.ReparentingTimeout = value;
+    }
+
+    /// <summary>Gets or sets the JSON options used for bridge payloads.</summary>
+    public JsonSerializerOptions BridgeJsonSerializerOptions
+    {
+        get => WebView.BridgeJsonSerializerOptions;
+        set => WebView.BridgeJsonSerializerOptions = value;
     }
 
     /// <summary>Gets or sets how long a host API implementation may run before a timeout error.</summary>
@@ -289,6 +316,16 @@ public sealed class ReactHostView : Grid, IDisposable
 
     /// <summary>Navigates the WebView to an explicit URI.</summary>
     public void Navigate(Uri source) => WebView.Navigate(source);
+
+    /// <summary>
+    /// Starts a manual reparenting scope. Disposing it re-evaluates the native control's parent or
+    /// destroys it when the control is not attached.
+    /// </summary>
+    public IDisposable BeginReparenting(bool yieldOnLayoutBeforeExiting = true) =>
+        WebView.BeginReparenting(yieldOnLayoutBeforeExiting);
+
+    /// <summary>Starts an asynchronous manual reparenting scope.</summary>
+    public IAsyncDisposable BeginReparentingAsync() => WebView.BeginReparentingAsync();
 
     /// <summary>Opens the platform print UI for the current page.</summary>
     public void ShowPrintUI() => WebView.ShowPrintUI();

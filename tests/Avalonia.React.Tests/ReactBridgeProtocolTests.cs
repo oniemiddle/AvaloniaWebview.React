@@ -53,4 +53,21 @@ public sealed class ReactBridgeProtocolTests
     [Fact]
     public void Application_messages_are_not_reserved() =>
         Assert.False(ReactBridgeProtocol.IsReserved("react:clicked"));
+
+    [Fact]
+    public void Builds_a_domain_event_script_with_escaped_type_and_payload()
+    {
+        var script = ReactBridgeProtocol.CreateDomainEventScript("weird\"type", """{"value":1}""");
+
+        Assert.Contains("window.dispatchEvent(new CustomEvent('avalonia-react:message'", script);
+        Assert.Contains("weird\\u0022type", script);
+        Assert.Contains("payload: {\"value\":1}", script);
+    }
+
+    [Fact]
+    public void Quotes_json_strings()
+    {
+        Assert.Equal("\"plain\"", ReactBridgeProtocol.QuoteJson("plain"));
+        Assert.Equal("\"a\\u0022b\"", ReactBridgeProtocol.QuoteJson("a\"b"));
+    }
 }

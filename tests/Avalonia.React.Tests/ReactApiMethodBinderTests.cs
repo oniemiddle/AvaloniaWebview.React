@@ -50,6 +50,30 @@ public sealed class ReactApiMethodBinderTests
     }
 
     [Fact]
+    public void Uses_the_provided_serializer_options()
+    {
+        var method = typeof(ReactApiMethodBinderTests).GetMethod(
+            nameof(OptionsTarget),
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        using var document = JsonDocument.Parse("""{"full_name":"Ada"}""");
+        var arguments = new[] { document.RootElement.Clone() };
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            PropertyNameCaseInsensitive = false,
+        };
+
+        var bound = ReactApiMethodBinder.Bind(
+            method.GetParameters(),
+            arguments,
+            "TestApi",
+            "options",
+            serializerOptions: options);
+
+        Assert.Equal("Ada", ((OptionsDto)bound[0]!).FullName);
+    }
+
+    [Fact]
     public void Rejects_a_missing_required_argument()
     {
         var exception = Assert.Throws<InvalidOperationException>(() => Bind());
@@ -82,5 +106,14 @@ public sealed class ReactApiMethodBinderTests
 
     private static void TokenTarget(string name, CancellationToken cancellationToken = default)
     {
+    }
+
+    private static void OptionsTarget(OptionsDto profile)
+    {
+    }
+
+    public sealed class OptionsDto
+    {
+        public string FullName { get; set; } = string.Empty;
     }
 }

@@ -13,7 +13,8 @@ internal static class ReactApiMethodBinder
         IReadOnlyList<JsonElement> arguments,
         string apiName,
         string methodName,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        JsonSerializerOptions? serializerOptions = null)
     {
         var tokenIndex = parameters.Length > 0 &&
             parameters[parameters.Length - 1].ParameterType == typeof(CancellationToken)
@@ -38,7 +39,9 @@ internal static class ReactApiMethodBinder
 
             if (index < arguments.Count)
             {
-                bound[index] = arguments[index].Deserialize(parameters[index].ParameterType, JsonSerializerOptions.Web);
+                bound[index] = arguments[index].Deserialize(
+                    parameters[index].ParameterType,
+                    serializerOptions ?? JsonSerializerOptions.Web);
                 continue;
             }
 

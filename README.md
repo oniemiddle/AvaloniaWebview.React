@@ -148,6 +148,22 @@ webView.Reload();
 - `ApiInvokeTimeout` (30 seconds by default) returns a timeout error to React when a host API implementation runs too long; set it to `TimeSpan.Zero` to disable.
 - `RegisterApi` rejects duplicate API names; `UnregisterApi` removes one.
 
+### Multi-window and reparenting
+
+`ReactHostView` sets `PreserveWebViewOnDetach` by default. When the control is removed from a visual tree, it starts a native reparenting scope instead of destroying the WebView, so moving it to another window or tab keeps the page, history, cookies, and bridge state. Reattaching releases the scope and reparents the native control; if it is not reattached, `ReparentingTimeout` (10 seconds by default) releases the scope and destroys it.
+
+```csharp
+reactHost.ReparentingTimeout = TimeSpan.FromSeconds(30);
+
+// Optional manual scope when the application controls the detach/attach sequence.
+using (reactHost.BeginReparenting())
+{
+    // detach the control and attach it to another window
+}
+```
+
+Raw `AvaloniaReactWebView` leaves `PreserveWebViewOnDetach` disabled and exposes the same `BeginReparenting`/`BeginReparentingAsync` methods. Each WebView still owns its own loopback asset server; the server's window subscription follows the control as it moves. Disposing or shutting down the host releases everything.
+
 ### Native WebView capabilities
 
 `AvaloniaReactWebView` derives from `NativeWebView`, so the platform capabilities are available directly: `UserAgent`, `CanGoBack`/`CanGoForward`, `GoBack`/`GoForward`, `Stop`, `Navigate`, `ShowPrintUI`, `PrintToPdfStreamAsync`, `TryGetCookieManager`, `TryGetCommandManager`, and `AdapterInfo`. `ReactHostView` forwards the common ones, so applications using the overlay do not need to reach through `WebView`:
@@ -340,7 +356,15 @@ Set `AvaloniaReactVersion` in `Directory.Build.props`, commit, and push a matchi
 
 ## Trimming and Native AOT
 
-The control and asset server are ordinary libraries, but host API registration and payload (de)serialization use reflection and reflection-based `System.Text.Json`. Those members are annotated with `RequiresUnreferencedCode` and `RequiresDynamicCode`, so enabling the trim/AOT analyzers reports call sites that need attention. If the application is trimmed or compiled with Native AOT, preserve the generated interface implementations and payload types (for example with `DynamicDependency` or a trim descriptor) or avoid the reflection-based API surface. The source generator produces interfaces only; it does not generate `JsonSerializerContext` metadata. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements.
+The control and asset server are ordinary libraries, but host API registration still reflects over interface implementations. Those members are annotated with `RequiresUnreferencedCode` and `RequiresDynamicCode`, so enabling the trim/AOT analyzers reports call sites that need attention.
+
+Bridge envelopes are built without reflection, and `BridgeJsonSerializerOptions` can be assigned options backed by a source-generated `JsonSerializerContext` so payload serialization works under trimming/AOT:
+
+```csharp
+reactHost.BridgeJsonSerializerOptions = MyApp.Frontend.FrontendApiJsonContext.Default.Options;
+```
+
+The generated source generator does not yet emit that context automatically, and host API dispatch still uses reflection; applications should preserve their contract implementations (or avoid `RegisterApi`) when trimming. If the application is trimmed or compiled with Native AOT, preserve the generated interface implementations and payload types (for example with `DynamicDependency` or a trim descriptor) or avoid the reflection-based API surface. The source generator produces interfaces only; it does not generate `JsonSerializerContext` metadata. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements.
 
 ## Platform notes
 

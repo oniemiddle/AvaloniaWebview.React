@@ -30,6 +30,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private bool _sourceConfigured;
     private bool _bridgeReady;
     private bool _isShutdown;
+    private IDisposable? _reparentingScope;
+    private readonly DispatcherTimer _reparentingTimer;
     private ReactLoadState _loadState;
 
     /// <summary>
@@ -39,6 +41,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
     {
         _ = DevServerLifetime.Value;
         EnableDevTools = ReactDefaults.EnableDevTools;
+        _reparentingTimer = new DispatcherTimer { Interval = ReparentingTimeout };
+        _reparentingTimer.Tick += HandleReparentingTimeout;
         WebMessageReceived += HandleWebMessageReceived;
         ActualThemeVariantChanged += HandleActualThemeVariantChanged;
         NavigationStarted += HandleNavigationStarted;
@@ -126,6 +130,27 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// it automatically. Defaults to <see langword="false"/> for direct WebView use.
     /// </summary>
     public bool EnableWindowsOffscreenComposition { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the native WebView is preserved while the control is detached, allowing
+    /// it to be reattached in another window without losing page state. Defaults to
+    /// <see langword="false"/> for direct WebView use; <see cref="ReactHostView"/> enables it.
+    /// </summary>
+    public bool PreserveWebViewOnDetach { get; set; }
+
+    /// <summary>
+    /// Gets or sets how long a detached WebView is preserved before its reparenting scope is released
+    /// and the native control is destroyed. Defaults to 10 seconds; set to <see cref="TimeSpan.Zero"/>
+    /// to preserve it indefinitely until reattached or shut down.
+    /// </summary>
+    public TimeSpan ReparentingTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Gets or sets the JSON options used for bridge payloads. Applications using trimming or Native
+    /// AOT can assign options backed by a source-generated <c>JsonSerializerContext</c>. Defaults to
+    /// <see cref="JsonSerializerOptions.Web"/>.
+    /// </summary>
+    public JsonSerializerOptions BridgeJsonSerializerOptions { get; set; } = new(JsonSerializerOptions.Web);
 
     /// <summary>
     /// Gets or sets the maximum number of host-to-React messages held while the page is loading.
@@ -280,16 +305,6 @@ public sealed class AvaloniaReactWebView : NativeWebView
     public bool Reload()
     {
         ThrowIfShutdown();
-        if (Source is null && !_sourceConfigured)
-        {
-            _ = ApplySourceMode();
-        }
-
-        if (Source is null)
-        {
-            SetLoadState(ReactLoadState.Idle, null);
-            return false;
-        }
 
         _bridgeReady = false;
         SetLoadState(ReactLoadState.Loading, null);
@@ -315,6 +330,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
 
         _isShutdown = true;
+        ReleaseReparentingScope();
         DetachAssetServerWindow();
         var transport = _assetTransport;
         _assetTransport = null;
@@ -369,14 +385,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
         foreach (var method in contract.GetMethods())
         {
             var javascriptName = method.GetCustomAttribute<ReactApiMethodAttribute>()?.Name ?? GetJavaScriptMethodName(method);
-            if (methods.ContainsKey(javascriptName))
+            if (!methods.TryAdd(javascriptName, method))
             {
                 throw new ArgumentException(
                     $"The API contract '{contract.Name}' contains two methods that map to '{javascriptName}'.",
                     nameof(implementation));
             }
-
-            methods[javascriptName] = method;
         }
 
         _apis[name] = new ApiRegistration(implementation, methods);
@@ -406,15 +420,20 @@ public sealed class AvaloniaReactWebView : NativeWebView
         ThrowIfShutdown();
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
-        var message = JsonSerializer.Serialize(new ReactMessage<T>(type, payload));
-        var script = $"window.dispatchEvent(new CustomEvent('{ReactBridgeMessages.DomainEventName}', {{ detail: {message} }}));";
+        var payloadJson = JsonSerializer.Serialize(payload, BridgeJsonSerializerOptions);
+        return PostJsonAsync(type, payloadJson);
+    }
+
+    private Task<string?> PostJsonAsync(string type, string payloadJson)
+    {
+        var script = $"window.dispatchEvent(new CustomEvent('{ReactBridgeMessages.DomainEventName}', {{ detail: {{ type: {QuoteJson(type)}, payload: {payloadJson} }} }}));";
         if (Dispatcher.UIThread.CheckAccess())
         {
             return PostScriptAsync(script);
         }
 
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Dispatcher.UIThread.Post(async () =>
+        Dispatcher.UIThread.Post(async void () =>
         {
             try
             {
@@ -442,6 +461,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
 
         base.OnAttachedToVisualTree(e);
+        ReleaseReparentingScope();
         if (_embeddedAssetsEnabled && TopLevel.GetTopLevel(this) is Window window)
         {
             AttachAssetServerWindow(window);
@@ -451,9 +471,56 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// <inheritdoc />
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        DetachAssetServerWindow();
+        if (!_isShutdown)
+        {
+            if (PreserveWebViewOnDetach)
+            {
+                BeginReparentingScope();
+                // Keep the current window subscription: if the control is not reattached, the old
+                // window can still shut down the asset server.
+            }
+            else
+            {
+                DetachAssetServerWindow();
+            }
+        }
+
         base.OnDetachedFromVisualTree(e);
     }
+
+    private void BeginReparentingScope()
+    {
+        if (_reparentingScope is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            _reparentingScope = BeginReparenting(yieldOnLayoutBeforeExiting: true);
+        }
+        catch (Exception)
+        {
+            // Reparenting is an optimization; fall back to the platform's normal detach behavior.
+            return;
+        }
+
+        if (ReparentingTimeout > TimeSpan.Zero)
+        {
+            _reparentingTimer.Interval = ReparentingTimeout;
+            _reparentingTimer.Start();
+        }
+    }
+
+    private void ReleaseReparentingScope()
+    {
+        _reparentingTimer.Stop();
+        var scope = _reparentingScope;
+        _reparentingScope = null;
+        scope?.Dispose();
+    }
+
+    private void HandleReparentingTimeout(object? sender, EventArgs e) => ReleaseReparentingScope();
 
     private Uri EnableEmbeddedAssets(Uri baseUri)
     {
@@ -501,7 +568,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
 
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Dispatcher.UIThread.Post(async () =>
+        Dispatcher.UIThread.Post(async void () =>
         {
             try
             {
@@ -726,7 +793,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
     {
         try
         {
-            await PostMessageAsync(ReactBridgeMessages.Theme, new { theme = GetThemeName(ActualThemeVariant) });
+            var payload = "{\"theme\":" + QuoteJson(GetThemeName(ActualThemeVariant)) + "}";
+            await PostJsonAsync(ReactBridgeMessages.Theme, payload);
         }
         catch (Exception)
         {
@@ -758,6 +826,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
         Application.Current?.PlatformSettings?.GetColorValues().ThemeVariant == PlatformThemeVariant.Dark
             ? "dark"
             : "light";
+
+    private static string QuoteJson(string value) => "\"" + JsonEncodedText.Encode(value).ToString() + "\"";
 
     private void HandleWebMessageReceived(object? sender, WebMessageReceivedEventArgs args)
     {
@@ -884,7 +954,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
                 jsonArguments,
                 apiName,
                 methodName,
-                cancellation?.Token ?? CancellationToken.None);
+                cancellation?.Token ?? CancellationToken.None,
+                BridgeJsonSerializerOptions);
             var implementationMethod = FindImplementationMethod(registration.Implementation.GetType(), method);
             var invocation = implementationMethod.Invoke(registration.Implementation, arguments);
             if (invocation is Task task)
@@ -1085,9 +1156,6 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
     private sealed record ApiRegistration(object Implementation, IReadOnlyDictionary<string, MethodInfo> Methods);
 
-    private sealed record ReactMessage<T>(
-        [property: JsonPropertyName("type")] string Type,
-        [property: JsonPropertyName("payload")] T Payload);
 }
 
 /// <summary>

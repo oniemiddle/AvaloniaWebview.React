@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-10-18
+
+### Added
+
+- Multi-window and tab support through native reparenting:
+  - `AvaloniaReactWebView.PreserveWebViewOnDetach` and `ReparentingTimeout` preserve the native
+    WebView while the control is detached, then reparent it on reattach or release it after the
+    timeout.
+  - `ReactHostView` enables preservation by default and exposes `PreserveWebViewOnDetach`,
+    `ReparentingTimeout`, `BeginReparenting`, and `BeginReparentingAsync`.
+  - The embedded asset server's window subscription follows the control between windows.
+- `BridgeJsonSerializerOptions` on `AvaloniaReactWebView` and `ReactHostView` lets applications
+  supply source-generated JSON options for trimmed/AOT deployments.
+- Host-to-React envelopes, theme messages, and API result envelopes are now constructed without
+  reflection-based anonymous type serialization. `ReactBridgeProtocol` exposes the script builder
+  and JSON string encoder for testing.
+- New envelope/protocol tests (96 control tests total).
+
+### Changed
+
+- Package version is `0.13.0`.
+
+### Documentation
+
+- Documented multi-window/reparenting behavior and the remaining trimming/AOT constraints.
+
 ## [0.12.0] - 2026-10-18
 
 ### Added
