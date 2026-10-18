@@ -1,448 +1,161 @@
 # AvaloniaWebview.React
 
-A small .NET 10 toolkit for hosting a React frontend in Avalonia 12 with Avalonia's official `NativeWebView` and a JSON message bridge.
+**Host a React frontend inside Avalonia 12's official `NativeWebView` — typed host APIs, a JSON bridge, and no bundled browser engine.**
 
-## Install
+[![NuGet](https://img.shields.io/nuget/v/AvaloniaWebview.React?label=NuGet)](https://www.nuget.org/packages/AvaloniaWebview.React)
+[![npm](https://img.shields.io/npm/v/@avalonia-react/bridge?label=npm)](https://www.npmjs.com/package/@avalonia-react/bridge)
+![.NET](https://img.shields.io/badge/.NET-10-512BD4)
+![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44F7)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+![Avalonia + React sample running as a desktop app](docs/images/sample-native-dark.png)
+
+AvaloniaWebview.React keeps the native WebView model — WebView2 on Windows, WKWebView on macOS, WebKitGTK/WPE on Linux — and adds the plumbing a hybrid desktop app needs: a typed contract generator, a request/response bridge, React hooks, theme sync, and a production asset pipeline.
+
+## Highlights
+
+- **Official WebView, no bundled Chromium.** Uses Avalonia 12's `NativeWebView` and the web runtime already on the machine.
+- **Contract-first host APIs.** A shared `.d.ts` generates C# interfaces, DTOs, enums, and a compiler-checked TypeScript proxy.
+- **Full duplex bridge.** React → .NET messages and .NET → React request/response calls with timeout and cancellation.
+- **Production-ready frontend hosting.** Debug uses Vite; Release serves `wwwroot` or assets embedded in the assembly over a hardened loopback server.
+- **Desktop concerns included.** Theme sync, loading overlay, navigation policy, origin-gated APIs, shared/isolated sessions, reparenting, and resource cleanup.
+- **Trimming and Native AOT friendly.** Generated converters and reflection-free API dispatch ship with the source generator.
+- **Agent skill included.** `skills/avalonia-webview-react-hybrid` helps coding agents work with this stack correctly.
+
+## Quick start
+
+### 1. Install
 
 ```sh
 dotnet add package AvaloniaWebview.React
-```
-
-The package references `Avalonia.Controls.WebView` 12.1.0. Windows uses WebView2, macOS uses the system WKWebView, and Linux needs the WebKitGTK or WPE WebKit runtime. The browser runtime is provided by the operating system; Chromium is not bundled.
-
-On Windows, the host executable must embed an application manifest that declares Windows 10/11 compatibility before `NativeWebView` can create its native child window. The sample does this with `samples/ReactHost/app.manifest` and the `ApplicationManifest` project property; add the same compatibility declaration to your host application's manifest.
-
-The main package also imports an MSBuild frontend build target. When the consuming project contains a `ClientApp/package.json`, it installs dependencies with `npm ci` when needed, runs `npm run build` before the .NET build, and copies `dist` to the app's `wwwroot` output. Override `AvaloniaReactProjectDirectory`, `AvaloniaReactBuildCommand`, `AvaloniaReactInstallCommand`, or set `AvaloniaReactBuildOnBuild=false` in the project file to customize it.
-
-For Vite development, install the optional extension:
-
-```sh
-dotnet add package AvaloniaWebview.React.Vite
-```
-
-In Debug builds it checks the configured Vite server before the .NET build, starts it when needed, and waits for the server to accept connections before continuing. Visual Studio's fast up-to-date check is disabled for Debug when this auto-start target applies, so each F5 verifies/restarts Vite if its process exited after the previous debug session. This adds a no-op MSBuild check to each Debug launch. Set `AvaloniaReactDevServerDirectory` to the React project directory; `AvaloniaReactDevServerUrl`, `AvaloniaReactDevServerCommand`, and `AvaloniaReactAutoStart` can override the defaults. Set `AvaloniaReactDevServerWarmupPath` to a frequently used client entry (for example, `src/main.tsx`) to wait until Vite has transformed it before launching the host. Node.js and npm must be installed, and frontend dependencies must be available.
-
-To generate C# interfaces from TypeScript API contracts, install:
-
-```sh
 dotnet add package AvaloniaWebview.React.SourceGenerator
+dotnet add package AvaloniaWebview.React.Vite   # optional Debug-time Vite startup
+
+npm install @avalonia-react/bridge
 ```
 
-Add an exported interface in a `.d.ts` file under the .NET project. For example:
+Windows hosts must embed an application manifest declaring Windows 10/11 compatibility; see [getting started](docs/getting-started.md#install) and [samples/ReactHost/app.manifest](samples/ReactHost/app.manifest).
+
+### 2. Define the contract
 
 ```ts
 // @namespace MyApp.Frontend
 export interface HostApi {
   getGreeting(name: string): Promise<string>;
-  saveCount(value: number): Promise<void>;
-  findUsers(limit: number, filter?: string): Promise<string[]>;
 }
 ```
 
-This generates `MyApp.Frontend.IHostApi` with `Task<string> GetGreetingAsync(string name)`, `Task SaveCountAsync(double value)`, and `Task<IReadOnlyList<string>> FindUsersAsync(double limit, string? filter = default)`. Generated types include `string`, `number`, `boolean`, `void`, `object`, `unknown`, `any`, arrays, `Record<string, T>`, `Date`, nullable unions, and literal unions; any type that cannot be represented is mapped to `JsonElement` with an `AVR0002` diagnostic. Unsupported members produce `AVR0001`, generic interfaces are skipped with `AVR0003`, and unsupported enums are skipped with `AVR0004`.
-
-Interfaces without methods and object `type` aliases generate DTO classes instead of API contracts:
-
-```ts
-// @namespace MyApp.Frontend
-export enum Status {
-  Active = "active",
-  Disabled = "disabled",
-}
-
-export interface UserProfile {
-  id: number;
-  name: string;
-  nickname?: string;
-  status: Status;
-}
-
-export interface HostApi {
-  save(profile: UserProfile): Promise<UserProfile>;
-}
-```
-
-This emits a `UserProfile` class with `[JsonPropertyName]` properties, a `Status` enum using `JsonStringEnumMemberName` values, and an `IHostApi.SaveAsync(UserProfile)` method. Generated DTOs and enums declared in other `.d.ts` files are resolved when their names are unique; otherwise they fall back to `JsonElement`.
-
-Generated interfaces are `partial` and carry `[ReactApiContract]`/`[ReactApiMethod]`, so the bridge uses the exact TypeScript API and method names. Keep the contract in the React project and reference it from the .NET project with `<AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />` to use one file for both sides.
-
-Implement the generated interface and register it with the generated reflection-free helper `HostApiBridge.Register(webView, implementation)` (or the reflection-based `webView.RegisterApi<IHostApi>(implementation)`). On the React side, `createHostApiProxy<T>("HostApi")` returns a compiler-checked proxy, so method names and arguments no longer have to be written as strings:
-
-```ts
-import { createHostApiProxy } from "@avalonia-react/bridge";
-import type { HostApi } from "./FrontendApi";
-
-const hostApi = createHostApiProxy<HostApi>("HostApi");
-const greeting = await hostApi.getGreeting("Ada");
-```
-
-The lower-level `invokeHostApi<T>("HostApi", "getGreeting", "Ada")` form remains available.
-
-Host API methods can observe cancellation. Set `<AvaloniaReactGenerateCancellationToken>true</AvaloniaReactGenerateCancellationToken>` in the host project; generated interfaces then append `CancellationToken cancellationToken = default` to every method. The bridge passes a token that is canceled when React aborts or times out a call, when the page navigates or fails to load, and on shutdown. The bridge client sends `avalonia:invoke:cancel` automatically in those cases. The option defaults to `false`, so existing contracts and implementations are unchanged.
-
-## React client package
-
-The frontend bridge is published as `@avalonia-react/bridge`:
-
-```sh
-npm install @avalonia-react/bridge
-```
-
-It is ESM-only, includes TypeScript declarations, and forwards the reserved `avalonia:*` messages, host API calls, theme requests, JavaScript errors, cancellation, and timeouts. React projects can use `@avalonia-react/bridge/react` for `useHostApi`, `useHostApiInvoke`, `useAvaloniaMessage`, `useHostTheme`, `useSignalReady`, `useBridgeAvailable`, and `useReactHandler`. Inside this repository the sample uses the local package through `file:../../client`; run `npm --prefix client run build` before installing it.
-
-## Agent skill
-
-[`skills/avalonia-webview-react-hybrid`](skills/avalonia-webview-react-hybrid/SKILL.md) is an installable Agent Skill for teams using the library. It covers the hybrid architecture, contract-first host APIs, source modes, security boundaries, runtime diagnostics, multi-window reparenting, and trimming/AOT. See [`skills/README.md`](skills/README.md) for DSH, Claude Code, and Codex installation.
-
-## Host a React development server
-
-Add the control to an Avalonia view. Point it to the Vite development server while developing, or let `SourceMode="Auto"` select the source. The included host uses Vite in Debug and embedded assets in Release; set `Source` or `SourceMode` to override both.
+Reference it from the .NET project:
 
 ```xml
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:react="using:AvaloniaWebview.React">
-  <react:AvaloniaReactWebView Source="http://localhost:5173/" />
-</Window>
+<ItemGroup>
+  <AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />
+</ItemGroup>
 ```
 
-Start the frontend with `npm run dev -- --host 0.0.0.0`. Keep the Vite port in sync with the `Source` URI.
+### 3. Implement and register it
 
-### Configure the source in XAML
+```csharp
+using AvaloniaWebview.React;
+using MyApp.Frontend;
 
-`SourceMode="Auto"` removes the usual Debug/Release branching from the application:
+public sealed class HostApi : IHostApi
+{
+    public Task<string> GetGreetingAsync(string name) =>
+        Task.FromResult($"Hello {name}");
+}
 
-```xml
-<react:AvaloniaReactWebView SourceMode="Auto" />
+HostApiBridge.Register(ReactHost.WebView, new HostApi());
 ```
 
-The AvaloniaWebview.React MSBuild targets emit assembly metadata into the host executable: Debug builds resolve `Auto` to the Vite server, other configurations resolve to embedded assets (or `AssemblyEmbeddedAssets` when `AvaloniaReactEmbedAssetsInAssembly` is enabled). Override the defaults with `AvaloniaReactDefaultSourceMode`, `AvaloniaReactDevServerUrl`, or `AvaloniaReactEnableDevTools`, or set `SourceMode` to `Manual`, `DevServer`, `EmbeddedAssets`, or `AssemblyEmbeddedAssets`. Set `AvaloniaReactEmitAssemblyMetadata=false` to opt out of the generated metadata. `Source` is only assigned when the control enters the visual tree, so the source can be configured from XAML or a constructor.
-
-### Use the built-in host view
-
-`ReactHostView` wraps `AvaloniaReactWebView` with a themed loading/error overlay and forwards the common configuration, events, and methods. The overlay hides after navigation, or after the React client's `signalReady()` when `WaitForBridgeReady` is enabled, with a fallback timeout:
+### 4. Render the host view and call it
 
 ```xml
 <react:ReactHostView x:Name="ReactHost"
                      SourceMode="Auto"
-                     WaitForBridgeReady="True"
-                     LoadingText="正在启动 Avalonia + React…"
-                     RetryText="重试加载"
-                     ErrorTextFormat="页面加载失败：{0}" />
+                     WaitForBridgeReady="True" />
 ```
-
-`ReactHostView` exposes `RegisterApi`, `PostMessageAsync`, `Reload`, `SourceMode`, the load/bridge events, and the underlying `WebView` for advanced use. Set `WaitForBridgeReady="False"` (the default) to hide the overlay as soon as navigation completes. `BridgeReadyTimeout` (10 seconds by default) prevents a missing handshake from keeping the overlay visible forever. `ShowOverlay="False"` disables the built-in overlay entirely. Call `Shutdown()` (or `Dispose()`) when discarding a host view; shutdown is idempotent and releases the embedded asset transport.
-
-### Load state and recovery
-
-The control tracks the page lifecycle and waits for the React ready handshake:
-
-```csharp
-webView.LoadStateChanged += (_, args) =>
-{
-    // Idle, Loading, Loaded, Failed
-    if (args.State == ReactLoadState.Failed) Console.WriteLine(args.Error);
-};
-
-webView.BridgeReady += (_, _) => overlay.IsVisible = false;
-
-// Reload the current source and reset the state.
-webView.Reload();
-```
-
-`PostMessageAsync` calls made before the page finishes loading are queued (up to `MaxQueuedBridgeMessages`, 1024 by default) and flushed when navigation completes. If navigation fails, queued callers receive an `InvalidOperationException` instead of hanging. The React client sends the reserved `avalonia:ready` message through `signalReady()` from `@avalonia-react/bridge`; the host raises `BridgeReady` once per page.
-
-### Navigation, diagnostics, and security
-
-- `ExternalNavigationPolicy` defaults to `OpenInSystemBrowser`: navigations that leave the initial origin are cancelled and opened in the system browser. Use `Block` to ignore them or `Allow` to navigate the WebView; add trusted origins to `AllowedOrigins`.
-- `NewWindowRequested` is handled by default: same-origin requests navigate the current view, external requests follow `ExternalNavigationPolicy`.
-- `EnableDevTools` requests the platform dev tools (defaults to true in Debug through build metadata). `ReactHostView` automatically enables WebView2 offscreen composition on Windows so its overlay renders above the WebView; direct `AvaloniaReactWebView` users can set `EnableWindowsOffscreenComposition` when they layer Avalonia content above the WebView.
-- `BridgeError` reports exceptions thrown by application `MessageReceived` handlers instead of letting them escape the WebView event loop.
-- `JavaScriptError` receives window errors and unhandled promise rejections forwarded by the bridge client, including message, stack, source, line, and column.
-- `ApiInvokeTimeout` (30 seconds by default) returns a timeout error to React when a host API implementation runs too long; set it to `TimeSpan.Zero` to disable.
-- `RegisterApi` rejects duplicate API names; `UnregisterApi` removes one.
-- Host APIs are origin-gated. The initial application origin is trusted automatically; add additional page origins to `TrustedApiOrigins`. `AllowedOrigins` only grants navigation, not host API access. Requests from other origins are rejected with a `SecurityViolation` event and an error returned to React.
-- Main-frame navigation to non-HTTP schemes (`javascript:`, `data:`, `file:`, and similar) is always cancelled, even when `ExternalNavigationPolicy="Allow"`. Only HTTP(S) and `about:blank` are allowed.
-- `MaxIncomingMessageCharacters` (4,000,000 by default) drops oversized bridge messages and reports them through `SecurityViolation`. Set it to `0` or a negative value to disable the limit.
-- `ReactHostView.AdapterStartupTimeout` (10 seconds by default) shows a runtime-availability error if the native adapter never initializes. `AdapterDiagnostics`, `IsWebViewRuntimeInstalled`, and `WebViewUnavailableReason` expose the platform runtime state.
-
-### Multi-window and reparenting
-
-`ReactHostView` sets `PreserveWebViewOnDetach` by default. When the control is removed from a visual tree, it starts a native reparenting scope instead of destroying the WebView, so moving it to another window or tab keeps the page, history, cookies, and bridge state. Reattaching releases the scope and reparents the native control; if it is not reattached, `ReparentingTimeout` (10 seconds by default) releases the scope and destroys it.
-
-```csharp
-reactHost.ReparentingTimeout = TimeSpan.FromSeconds(30);
-
-// Optional manual scope when the application controls the detach/attach sequence.
-using (reactHost.BeginReparenting())
-{
-    // detach the control and attach it to another window
-}
-```
-
-Raw `AvaloniaReactWebView` leaves `PreserveWebViewOnDetach` disabled and exposes the same `BeginReparenting`/`BeginReparentingAsync` methods. Each WebView still owns its own loopback asset server; the server's window subscription follows the control as it moves. Disposing or shutting down the host releases everything.
-
-### Native WebView capabilities
-
-`AvaloniaReactWebView` derives from `NativeWebView`, so the platform capabilities are available directly: `UserAgent`, `CanGoBack`/`CanGoForward`, `GoBack`/`GoForward`, `Stop`, `Navigate`, `ShowPrintUI`, `PrintToPdfStreamAsync`, `TryGetCookieManager`, `TryGetCommandManager`, and `AdapterInfo`. `ReactHostView` forwards the common ones, so applications using the overlay do not need to reach through `WebView`:
-
-```csharp
-reactHost.UserAgent = "MyApp/1.0";
-if (reactHost.CanGoBack) reactHost.GoBack();
-reactHost.ShowPrintUI();
-
-await using var pdf = await reactHost.PrintToPdfStreamAsync();
-
-var cookies = reactHost.TryGetCookieManager();
-if (cookies is not null)
-{
-    var current = await cookies.GetCookiesAsync();
-}
-```
-
-`GetAdapterDiagnostics()` returns the platform `DetailedWebViewAdapterInfo` when available, and `ReactHostView` exposes `AdapterInfo`, `AdapterDiagnostics`, `IsWebViewRuntimeInstalled`, and `WebViewUnavailableReason`. If the platform adapter is missing or unsupported, the host view shows the runtime reason in its error overlay instead of leaving a blank loading screen.
-
-### Serve published assets
-
-Release builds copy the Vite output to `wwwroot` next to the host executable. Call `UseEmbeddedAssets()` instead of assigning a dev-server URL:
-
-```csharp
-reactView.UseEmbeddedAssets();
-```
-
-This starts a loopback HTTP server on an ephemeral port and serves `wwwroot` with:
-
-- SPA fallback to `index.html` for extensionless routes and for routes whose browser request accepts `text/html` (including dotted client-side routes); missing asset requests still return 404;
-- immutable cache headers for files under `assets/` and `no-cache` for `index.html`;
-- `ETag` (including `If-None-Match` lists), `Last-Modified`/`If-Modified-Since`, `If-Range`, `HEAD`, and single-range requests;
-- HTTP/1.1 keep-alive connections with idle timeout and a bounded concurrent connection count;
-- path traversal protection and a strict `Host` header check.
-
-Configure the root directory, fallback file, caching, keep-alive, connection limits, or a fixed port through `EmbeddedAssetOptions` (`EnableKeepAlive`, `IdleConnectionTimeout`, `MaxRequestsPerConnection`, `MaxConnections`, `Port`). The server binds only to `127.0.0.1` and stops when the host window closes.
-
-By default the port is ephemeral, so the loopback origin changes on every application start. Browser storage such as `localStorage` and IndexedDB is origin-scoped; set the same port and browser profile when that data must survive restarts:
-
-```csharp
-reactView.EmbeddedAssetsPort = 51823;
-reactView.Session = ReactWebViewSession.Shared;
-```
-
-`EmbeddedAssetsPort` also applies to `SourceMode="Auto"`/`AssemblyEmbeddedAssets`; `UseEmbeddedAssets(options => options.Port = ...)` is the manual equivalent. Pick a port owned by the app because a bound port makes startup fail with a clear "port may be in use" error instead of silently falling back. Set `SourceMode="EmbeddedAssets"` in a Debug build to test the published path without switching to Release. On macOS, plain HTTP to localhost may require an App Transport Security exception (`NSAllowsLocalNetworking`). Set `AvaloniaReactEmbeddedAssets=true` in the project file to make the build warn when `wwwroot/index.html` is missing.
-
-Every platform uses the same loopback server for embedded assets. There is no platform-specific virtual-host or scheme-handler path, so SPA fallback, caching, conditional requests, keep-alive, and connection limits behave identically on Windows, macOS, and Linux. The loopback server is the only asset transport the package exposes.
-
-### Embed assets in the assembly
-
-For single-file or installer deployments, embed the built frontend in the host assembly instead of shipping a `wwwroot` folder:
-
-```xml
-<PropertyGroup>
-  <AvaloniaReactEmbedAssetsInAssembly>true</AvaloniaReactEmbedAssetsInAssembly>
-</PropertyGroup>
-```
-
-The MSBuild target embeds `$(AvaloniaReactProjectDirectory)\dist\**` as manifest resources with the `AvaloniaWebview.React.Assets/` prefix before compilation (it runs the frontend build when it is enabled). In Release builds, `SourceMode="Auto"` resolves to `AssemblyEmbeddedAssets`: on startup the resources are extracted to a versioned directory under the system temporary directory and served by the loopback server, so no frontend files need to ship beside the executable. The extraction directory is reused across launches and changes when the assembly build changes.
-
-Call `UseAssemblyEmbeddedAssets` directly when the source mode should not use build metadata:
-
-```csharp
-reactView.UseAssemblyEmbeddedAssets(
-    extraction => extraction.ExtractionRoot = Path.Combine(AppContext.BaseDirectory, "react-cache"),
-    server => server.EnableCaching = true);
-```
-
-`AssemblyEmbeddedAssetOptions` also exposes `Assembly`, `ResourcePrefix`, and `ForceExtraction`. When overriding `AvaloniaReactAssemblyAssetPrefix`, pass the same value to `ResourcePrefix`.
-
-## React to Avalonia messages
-
-The TypeScript helper is published as [`@avalonia-react/bridge`](client/README.md):
-
-```sh
-npm install @avalonia-react/bridge
-```
-
-The NuGet package itself needs no npm dependency: React can call Avalonia's built-in JavaScript bridge directly.
 
 ```tsx
-import { postMessage, requestTheme, signalReady, subscribe } from "@avalonia-react/bridge";
+import { signalReady, createHostApiProxy } from "@avalonia-react/bridge";
+import type { HostApi } from "./FrontendApi";
 
-// Call after React mounts: tells the host the bridge is ready.
-signalReady({ version: 1 });
+const hostApi = createHostApiProxy<HostApi>("HostApi");
 
-const unsubscribe = subscribe<{ theme: "light" | "dark" }>("theme", ({ theme }) => {
-  document.documentElement.dataset.theme = theme;
-});
-requestTheme();
+// After React mounts.
+signalReady({ frontend: "React 19" });
 
-postMessage("account:changed", { id: 42 });
+const greeting = await hostApi.getGreeting("Ada");
 ```
 
-The Avalonia WebView exposes JavaScript's `invokeCSharpAction` helper. The client uses it to send JSON to .NET. Subscribe after your React app mounts so frontend handlers are ready before the host sends messages. For the initial theme, subscribe in the entry module before rendering.
+Deeper walkthroughs: [getting started](docs/getting-started.md) · [host integration](docs/host-integration.md) · [bridge protocol](docs/bridge.md) · [complete recipes](skills/avalonia-webview-react-hybrid/references/recipes.md).
 
-`avalonia:ready`, `avalonia:invoke`, `avalonia:invoke:result`, `avalonia:invoke:cancel`, `avalonia:error`, `theme`, and `theme:request` are reserved bridge messages handled by the control; application messages must use different names. `MessageReceived` only receives application messages. The first `avalonia:ready` from a page raises `BridgeReady`; use it to dismiss startup UI once React has mounted.
+## Screenshots
 
-`AvaloniaReactWebView` sends a `theme` message when the WebView's actual theme variant changes and once after every successful navigation. The payload is `{ theme: "light" | "dark" }`: `ThemeVariant.Default` follows the system theme, and custom variants resolve through their inherited variant or fall back to the system theme, so React always receives a semantic value. Send `{ type: "theme:request", payload: {} }` after subscribing to receive the current theme immediately, which is the reliable way to capture the initial value before the first navigation message arrives.
+The bundled sample is a small hybrid workbench: live .NET runtime metrics, a bridge playground, and an about view, in light and dark themes.
 
-If your React project only consumes the NuGet package, use the same message contract directly:
+| Light | Dark |
+| --- | --- |
+| ![Sample overview, light](docs/images/sample-overview-light.png) | ![Sample overview, dark](docs/images/sample-overview-dark.png) |
 
-```ts
-declare global {
-  interface Window {
-    invokeCSharpAction: (body: string) => void;
-  }
-}
+![Bridge playground](docs/images/sample-playground-light.png)
 
-export function postToAvalonia<T>(type: string, payload: T): void {
-  window.invokeCSharpAction(JSON.stringify({ type, payload }));
-}
+## Packages
 
-export function onAvaloniaMessage<T>(type: string, listener: (payload: T) => void): () => void {
-  const handler = (event: Event) => {
-    const message = (event as CustomEvent<{ type: string; payload: T }>).detail;
-    if (message?.type === type) listener(message.payload);
-  };
-  window.addEventListener("avalonia-react:message", handler);
-  return () => window.removeEventListener("avalonia-react:message", handler);
-}
-```
+| Package | What it does |
+| --- | --- |
+| `AvaloniaWebview.React` | The `AvaloniaReactWebView` control, `ReactHostView`, bridge, asset servers, sessions, diagnostics. |
+| `AvaloniaWebview.React.Vite` | Optional MSBuild targets that verify or start the Vite dev server for Debug builds. |
+| `AvaloniaWebview.React.SourceGenerator` | Generates C# APIs, DTOs, enums, converters, and registration helpers from `.d.ts` contracts. |
+| `@avalonia-react/bridge` | ESM TypeScript client: messages, typed host API proxy, theme, errors, cancellation, React hooks. |
 
-## Avalonia to React messages
+## Repository layout
 
-```csharp
-webView.MessageReceived += (_, message) =>
-{
-    if (message.Type == "ready")
-    {
-        var version = message.GetPayload<ReadyPayload>();
-        // Handle the message in the host application.
-    }
-};
+| Path | Contents |
+| --- | --- |
+| `src/` | The three .NET packages and the source generator. |
+| `client/` | `@avalonia-react/bridge` TypeScript package and tests. |
+| `samples/ReactHost` | Avalonia desktop host used by the sample (Debug: Vite, Release: embedded assets, Native AOT profile). |
+| `samples/react-app` | React 19 + Vite + Semi Design frontend for the sample. |
+| `tests/` | Control, source generator, client, and native WebView end-to-end tests. |
+| `skills/` | Installable Agent Skill plus API, recipe, and troubleshooting references. |
+| `eng/` | Build, publish, AOT verification, and E2E helper scripts. |
 
-await webView.PostMessageAsync("theme", new { theme = "dark" });
+## Documentation
 
-public sealed record ReadyPayload(int Version);
-```
-
-### Host-to-React calls
-
-For request/response flows initiated by .NET, register a React handler and call it from the host:
-
-```tsx
-import { registerReactHandler } from "@avalonia-react/bridge";
-
-const unregister = registerReactHandler<{ title: string }>(
-  "dialog:confirm",
-  async (payload, { signal }) => {
-    // Use signal to dismiss the dialog when the host times out or cancels.
-    return await showConfirm(payload.title, signal);
-  },
-);
-```
-
-```csharp
-var confirmed = await ReactHost.InvokeReactAsync<bool>(
-    "dialog:confirm",
-    new { title = "Delete this item?" },
-    TimeSpan.FromSeconds(10));
-```
-
-The host waits for `avalonia:react:result`, throws when the handler rejects, and times out after `ReactInvokeTimeout` (10 seconds by default) or the explicit timeout. A timeout or cancellation sends `avalonia:react:cancel`, which aborts the handler's `AbortSignal`. Use `useReactHandler` from `@avalonia-react/bridge/react` to keep a React handler current without re-registering on every render. Unknown handlers return an error to .NET instead of hanging.
-
-`PostMessageAsync` completes when the script runs, but messages sent before the page loads are queued and delivered after a successful navigation. Use `LoadState` and `BridgeReady` to decide when the UI is ready instead of relying on navigation alone:
-
-```csharp
-webView.LoadStateChanged += (_, args) =>
-{
-    if (args.State == ReactLoadState.Failed) ShowError(args.Error);
-};
-
-webView.BridgeReady += (_, _) => HideStartupOverlay();
-```
-
-## Package layout
-
-- `src/AvaloniaWebview.React`: the NuGet control and C# bridge.
-- `src/AvaloniaWebview.React.Vite`: optional Debug-time Vite server startup target.
-- `src/AvaloniaWebview.React.SourceGenerator`: C# interface generation from `.d.ts` declarations.
-- `client`: TypeScript helpers for sending and subscribing to bridge messages.
-- `skills`: installable Agent Skills for library users.
-- `samples/ReactHost` and `samples/react-app`: a runnable desktop and Vite example.
+| Guide | Contents |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | Packages, source generator rules, React client, Agent Skill installation. |
+| [Host integration](docs/host-integration.md) | Source modes, `ReactHostView`, lifecycle, navigation and security, assets, sessions, cleanup, runtime preflight, platform notes. |
+| [Bridge protocol](docs/bridge.md) | React ↔ Avalonia messages, reserved events, host-to-React calls. |
+| [Trimming and Native AOT](docs/trimming-and-aot.md) | Generated JSON metadata, custom serialization contexts, AOT guidance. |
+| [Sample application](docs/sample.md) | What the sample demonstrates and how to run or publish it. |
+| [Building and testing](docs/building-and-testing.md) | Solution build, test suites, native WebView smoke test, release flow. |
+| [Changelog](CHANGELOG.md) · [Releasing](RELEASING.md) | Version history and the release process. |
 
 ## Run the sample
 
-The sample UI uses Semi Design with React 19's adapter enabled. Debug serves the live Vite app and skips the separate production bundle build; Release builds the static frontend for packaging. Restore the frontend once:
-
 ```sh
-cd client
-npm install
-npm run build
+# Frontend (once)
+cd client && npm install && npm run build
+cd ../samples/react-app && npm install
 
-cd samples/react-app
-npm install
+# Desktop host
+dotnet run --project samples/ReactHost -f net10.0-windows   # Windows
+dotnet run --project samples/ReactHost -f net10.0           # macOS / Linux
 ```
 
-Then start the Avalonia host in Debug configuration. The sample multi-targets the Windows WebView2 host and the cross-platform target; pass `-f` to select one. The Vite extension starts the frontend automatically; Vite hot reload continues inside the official native WebView.
+The sample shows typed host APIs, live `getRuntimeMetrics()` data, host → React callbacks, `react:ack` round trips, shared vs. isolated sessions, lazy-loaded React modules, and Release/Native AOT packaging. See [docs/sample.md](docs/sample.md) for details, including `pwsh eng/publish-aot.ps1`.
 
-VS Code users can select the **ReactHost** launch configuration (or **ReactHost (cross-platform)**) from `.vscode/launch.json`; the matching build tasks are in `.vscode/tasks.json`.
+## Platform support
 
-```sh
-# Windows (WebView2)
-dotnet run --project samples/ReactHost -f net10.0-windows
+| Platform | WebView engine | Runtime requirement |
+| --- | --- | --- |
+| Windows | WebView2 (Edge) | Installed WebView2 Evergreen runtime; Windows 10/11 compatibility manifest. |
+| macOS | WKWebView (WebKit) | System WebKit; ATS `NSAllowsLocalNetworking` for HTTP loopback assets. |
+| Linux | WebKitGTK or WPE WebKit | System WebKit libraries provided by the distribution. |
 
-# macOS/Linux (system WebKit runtime required)
-dotnet run --project samples/ReactHost -f net10.0
-```
-
-The sample is a small desktop "hybrid workbench" that exercises the 0.19 feature set end to end. It has three React views (运行概览, 桥接实验, 关于示例) arranged in a Semi Design sidebar layout, and the same page still renders labelled browser values when it runs outside Avalonia.
-
-- **Live host metrics** — `FrontendApi.d.ts` declares `RuntimeMetrics` and `HostApi.getRuntimeMetrics()`. The dashboard polls it every two seconds and renders working set, GC heap, thread count, uptime, and the platform details card; `SampleHostApi` collects them with BCL APIs only.
-- **Generated DTO/enum/list JSON** — `RuntimeSnapshot`, `ServiceHealth`, `RuntimeMetrics`, and `ReactAck` are generated from the same contract, so both the typed host API and the React-to-host acknowledgment stay AOT-safe without a handwritten `JsonSerializerContext`.
-- **React hooks** — `App.tsx` uses `useSignalReady`, `useAvaloniaMessage`, `useHostTheme`, `useBridgeAvailable`, `useHostApi`, `useHostApiInvoke`, and `useReactHandler`; `main.tsx` only handles the pre-render theme so the initial paint matches the host. The dashboard adds one polling hook of its own on top of the generated proxy.
-- **Host → React** — the native toolbar's "宿主 → React" button calls `InvokeReactAsync<string>("host:greet", ...)`; the React side handles it with `useReactHandler` and returns a string to the host status bar.
-- **Bridge playground** — 桥接实验 combines the Hook call, the stable `useHostApi` proxy, a `postMessage` round trip with `react:ack`, and an event stream that records each path.
-- **Multi-window** — the native toolbar's shared window creates another `MainWindow` using `ReactWebViewSession.Shared` and the shared loopback asset server; the localStorage counter is shared between those windows. The isolated window uses `ReactWebViewSession.CreateEphemeral()` and starts with its own storage.
-- **Runtime preflight** — the host status line shows `ReactWebViewAvailability.Check()` output (engine, version, adapter), and the generated snapshot reports the same runtime information.
-- **Resource cleanup** — "清理存储" calls `ClearBrowserDataAsync(ReactWebViewDataKind.BrowserStorage)` and reports cleared/failed groups.
-- **Reparenting** — `ReactHostView` still preserves the native WebView across detach/attach by default.
-- **Lazy module and component library** — 本地开发服务 is a `React.lazy` chunk that is downloaded only when the details are expanded; it renders a Semi Design table inside the dashboard.
-- **Browser preview fallback** — when `window.invokeCSharpAction` is unavailable the dashboard falls back to browser-derived values, labels itself 浏览器预览, and switches to real .NET metrics as soon as the Avalonia host connects.
-
-Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the native chrome, overlay, and React UI follow the same light/dark theme.
-### Publish the sample with Native AOT
-
-The Windows sample also publishes as a self-contained Native AOT executable. Besides the .NET 10 SDK, Native AOT needs the MSVC linker from Visual Studio's "Desktop development with C++" workload and the Windows 10/11 SDK libraries (`kernel32.lib` and friends):
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File eng/publish-aot.ps1
-```
-
-Output lands in `artifacts/publish/ReactHost-win-x64-aot` — the native `ReactHost.exe`, its native Skia/HarfBuzz/ANGLE dependencies, and the Vite bundle in `wwwroot/` (about 39 MB in total). The script asserts that the output really is Native AOT (no managed `ReactHost.dll`), then launches it through [`eng/verify-published-app.ps1`](eng/verify-published-app.ps1), which writes a screenshot and a JSON report to `artifacts/aot-verify`; pass `-SkipRuntimeCheck` to stop after the build. The configuration lives in `samples/ReactHost/Properties/PublishProfiles/win-x64-aot.pubxml`, so the equivalent direct command is:
-
-```sh
-dotnet publish samples/ReactHost/ReactHost.csproj -p:PublishProfile=win-x64-aot -f net10.0-windows
-```
-
-`PublishAot` is set in the publish profile instead of being passed as a global property: global properties flow into project references, and the `netstandard2.0` source generator would then fail with `NETSDK1207`. Publishing also runs the Vite production build; pass `-p:AvaloniaReactBuildOnBuild=false` (or `-SkipFrontendBuild`) to reuse an existing `samples/react-app/dist`.
-
-The publish is **unsigned** by default, so the first launch shows Windows' "unknown publisher" security warning (打开文件 - 安全警告); that is expected for a locally built executable, and the publish script prints its SHA-256 for comparison. If the file was downloaded or unpacked from an archive, clear the mark-of-the-web first with `Unblock-File .\ReactHost.exe`. For distribution, sign with an Authenticode code-signing certificate:
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File eng/publish-aot.ps1 -CertificateThumbprint <thumbprint>
-```
-
-The script finds `signtool.exe` in the Windows 10/11 SDK, signs with SHA-256 and an RFC 3161 timestamp (`-TimestampServer`; pass `none` to skip), and verifies the signature. A self-signed certificate only suppresses the warning on machines that trust it (Trusted Root + Trusted Publishers); public distribution needs a CA-issued certificate (for example Azure Trusted Signing) so the publisher name can be verified.
-
-Payloads stay AOT-safe because the sample uses its generated contract: the host's `react:ack` message serializes a generated `ReactAck` DTO instead of an anonymous type, and the two annotated `PostMessageAsync`/`InvokeReactAsync` call sites suppress `IL2026`/`IL3050` because their payloads are primitives or generated DTOs that the generated JSON resolver covers. Adding an anonymous object or an unmapped custom payload to those calls would fail at run time once reflection-based serialization is trimmed away.
-
-Build all three NuGet packages with:
-
-```sh
-dotnet pack src/AvaloniaWebview.React/AvaloniaWebview.React.csproj -c Release
-dotnet pack src/AvaloniaWebview.React.Vite/AvaloniaWebview.React.Vite.csproj -c Release
-dotnet pack src/AvaloniaWebview.React.SourceGenerator/AvaloniaWebview.React.SourceGenerator.csproj -c Release
-```
-
-Build the npm tarball with `cd client && npm pack --pack-destination ../artifacts/packages`. See [RELEASING.md](RELEASING.md) for the complete release checklist.
+`AvaloniaWebview.React` targets `net10.0`; Windows hosts can reference it from `net10.0-windows`. `ReactWebViewAvailability.Check()` reports the runtime state before a window is created.
 
 ## Build and test
 
@@ -452,145 +165,10 @@ dotnet test tests/AvaloniaWebview.React.Tests/AvaloniaWebview.React.Tests.csproj
 dotnet test tests/AvaloniaWebview.React.SourceGenerator.Tests/AvaloniaWebview.React.SourceGenerator.Tests.csproj -c Release
 npm --prefix client run build
 npm --prefix client test
-npm --prefix client run verify:package
 ```
 
-The `AvaloniaReactBuildOnBuild` and `AvaloniaReactAutoStart` overrides skip npm and Vite during a .NET-only build. The control tests cover the bridge protocol, source-mode resolution, origin policy, message queue, API argument binding, JavaScript error parsing, and the loopback asset server (including keep-alive and conditional requests). The generator tests compile generated interfaces and assert the diagnostics. The client tests run on Node's built-in test runner and exercise messaging, the typed proxy, timeouts, aborts, page unload, and error forwarding. GitHub Actions runs all three suites on Windows and Linux and packs the four publishable packages.
+The native WebView smoke test and the release workflow are documented in [docs/building-and-testing.md](docs/building-and-testing.md). GitHub Actions runs the unit suites, the WebView E2E check, and package verification on Windows and Linux.
 
-### Native WebView smoke test
+## License
 
-Unit tests do not execute a real WebView. The E2E harness starts Avalonia, navigates a native WebView to an asset-server page with a known fixed port, and verifies the full bridge path: ready handshake, host API call, host-to-React call, and localStorage cleanup:
-
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File eng/run-webview-e2e.ps1 -Configuration Release -TargetFramework net10.0-windows
-```
-
-It writes `artifacts/webview-e2e-result.json` and exits non-zero if any check fails. The Windows CI job runs this smoke test and uploads the result artifact. The project is [`tests/AvaloniaWebview.React.WebViewE2E`](tests/AvaloniaWebview.React.WebViewE2E/AvaloniaWebview.React.WebViewE2E.csproj).
-
-## Release
-
-Set `AvaloniaReactVersion` in `Directory.Build.props`, update `client/package.json` and `client/package-lock.json`, commit, and push a matching `vX.Y.Z` tag. The workflow validates all versions, runs tests, verifies package contents, publishes the NuGet packages (including `.snupkg` symbols) using NuGet Trusted Publishing when `NUGET_USER` and the nuget.org policy are configured, publishes `@avalonia-react/bridge` when `NPM_TOKEN` is configured, and creates a GitHub release with the `.nupkg`, `.snupkg`, and `.tgz` files. See [RELEASING.md](RELEASING.md) for details.
-
-## Trimming and Native AOT
-
-The library is marked `IsTrimmable` and `IsAotCompatible`; its trim and AOT analyzers build cleanly. Prefer the generated registration helper, which invokes the implementation through delegates instead of `MethodInfo` reflection:
-
-```csharp
-HostApiBridge.Register(webView, new HostApi());
-```
-
-Generated handlers read `string`, `number`, `boolean`, `DateTimeOffset`, `byte[]`, and `JsonElement` arguments directly from `JsonElement`, and the bridge writes primitive/`JsonElement` results without reflection. The generator also emits converters and a type-info resolver for generated DTOs, enums, lists, dictionaries, nullable values, and the types used by generated contracts. A module initializer installs that resolver into `ReactJsonSerializerDefaults.Options`, so most trimmed/Native AOT apps need no JSON setup at all.
-
-For custom payload types that are not declared in a generated `.d.ts` contract (for example an arbitrary `PostMessageAsync<T>` or `InvokeReactAsync<T>` type), provide a source-generated context:
-
-```csharp
-[JsonSerializable(typeof(CustomMessage))]
-internal partial class AppJsonContext : JsonSerializerContext
-{
-}
-
-ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
-// Or per view: webView.BridgeJsonSerializerOptions = AppJsonContext.Default.Options;
-```
-
-Setting `ReactJsonSerializerDefaults.Options` keeps the generated resolver as a fallback, so generated DTO/enum contracts and custom context types can coexist. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's primitive API and a generated DTO/enum/list contract were verified with `PublishTrimmed=true` and reflection-based serialization disabled, and `samples/ReactHost` publishes end to end with Native AOT (`eng/publish-aot.ps1`).
-
-## Multi-window apps and shared sessions
-
-Each window can host its own `ReactHostView`. Windows created with the same embedded-asset configuration share one loopback asset server, so the React origin stays stable and `localStorage`, cookies, and IndexedDB line up across windows. The last window release stops the server; closing one window does not break the others.
-
-Browser data is controlled by `ReactWebViewSession`. All views use `ReactWebViewSession.Shared` by default:
-
-```csharp
-// Configure once, before creating windows.
-ReactWebViewSession.Shared.ProfileName = "MyAppProfile";
-ReactWebViewSession.Shared.UserDataFolder = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-    "MyApp",
-    "WebView");
-
-var first = new MainWindow();
-var second = new MainWindow();
-first.Show();
-second.Show();
-```
-
-Set `ProfileName`/`UserDataFolder` for deterministic WebView2 sharing on Windows; macOS shares the default WKWebView data store, and Linux uses `BaseDataDirectory`/`BaseCacheDirectory`. For an isolated child window, assign a fresh session before the window's WebView is created:
-
-```csharp
-var privateHost = new ReactHostView
-{
-    Session = ReactWebViewSession.CreateEphemeral(),
-};
-```
-
-`CreateEphemeral()` uses WebView2 InPrivate mode, a non-persistent WKWebView store, or a WebKitGTK ephemeral data manager where the platform supports it. Host API registrations are still per `ReactWebView`; register the APIs each window needs, or share application services. Shared browser storage does not grant a window access to another window's registered .NET APIs.
-
-The sample's native toolbar opens a shared window and an isolated window; setting `AVALONIA_REACT_MULTI_WINDOW=1` also opens a second shared window at startup.
-
-## Reclaiming resources
-
-The control exposes browser-data cleanup without shutting down the WebView:
-
-```csharp
-var result = await ReactHost.ClearBrowserDataAsync(
-    ReactWebViewDataKind.LocalStorage |
-    ReactWebViewDataKind.SessionStorage |
-    ReactWebViewDataKind.CacheStorage |
-    ReactWebViewDataKind.IndexedDb |
-    ReactWebViewDataKind.ServiceWorkers |
-    ReactWebViewDataKind.Cookies);
-
-if (!result.IsSuccess)
-{
-    // result.Failed says which groups failed; result.Warnings has details.
-}
-
-await ReactHost.ClearCookiesAsync();
-```
-
-- `Cookies` uses the native cookie manager.
-- Script-visible storage uses the loaded page and clears only the current origin.
-- `CacheStorage` clears the browser Cache API, not the engine's HTTP disk cache. HTTP cache and the browser profile are engine-managed; to purge them, close the WebView/session and remove the configured profile directory.
-- Shared sessions mean clearing data in one window affects other windows using the same origin/profile. Use an isolated `ReactWebViewSession` when that is not desired.
-- `ClearBrowserDataAsync` requires a loaded page for script-visible storage; cookie cleanup still works. Failures are reported per `ReactWebViewDataKind` rather than throwing.
-
-Assembly-embedded frontend files are extracted into a temporary directory. Clean that cache after the WebViews that use it have been shut down:
-
-```csharp
-await ReactWebViewResources.ClearExtractedAssetsAsync();
-
-// Or release a single WebView's native/browser resources:
-ReactHost.Shutdown();
-```
-
-`ClearExtractedAssetsAsync` deletes all extraction roots registered by this process, including a custom `AssemblyEmbeddedAssetOptions.ExtractionRoot`, and clears the extraction cache. Use `ReactHost.Shutdown()`/`Dispose()` to stop the WebView, queued bridge work, and the reference-counted asset server.
-
-## Runtime availability preflight
-
-Check the native WebView runtime before creating the window, so a missing runtime becomes an actionable startup message instead of a blank page:
-
-```csharp
-var availability = ReactWebViewAvailability.Check();
-if (!availability.IsAvailable)
-{
-    ShowInstallGuidance(availability.Message, availability.Guidance);
-    return;
-}
-
-// Throws PlatformNotSupportedException with the same guidance.
-ReactWebViewAvailability.EnsureAvailable();
-```
-
-`Check` inspects Avalonia's platform adapter and requires no WebView instance. The report exposes `Platform`, `Status`, `AdapterType`, `Engine`, `RuntimeVersion`, `SupportedScenarios`, `Guidance`, and `Details` for logs. It detects Windows WebView2, macOS WKWebView, and Linux WebKitGTK and provides install instructions for the missing runtime.
-
-## Platform notes
-
-- Windows uses the installed Microsoft Edge WebView2 runtime.
-- macOS uses the system WKWebView.
-- Linux needs WebKitGTK or WPE WebKit runtime libraries.
-- `AvaloniaWebview.React` targets `net10.0`; Windows hosts can reference it from a `net10.0-windows` project.
-- The sample builds for `net10.0-windows` and `net10.0`; both use the same loopback HTTP asset server.
-- The embedded asset pipeline in this repository targets desktop host applications; mobile and browser hosting are not covered by the sample or the MSBuild targets.
-
-See the [official Avalonia WebView documentation](https://docs.avaloniaui.net/docs/app-development/embedding-web-content) for platform setup details.
+[MIT](LICENSE)
