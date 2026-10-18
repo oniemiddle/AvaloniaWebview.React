@@ -16,7 +16,7 @@ The toolkit has four parts:
 | `AvaloniaWebview.React.SourceGenerator` | Generates typed C# APIs, DTOs, enums, and registration helpers from `.d.ts` files. |
 | `@avalonia-react/bridge` (npm) | The React-side typed client: messages, host API calls, theme, errors, cancellation. |
 
-Current package line: `0.18.0`. The namespace, assemblies, project folders, and NuGet IDs are `AvaloniaWebview.React`; the public WebView control type is still named `AvaloniaReactWebView`. The npm scope remains `@avalonia-react/bridge`. Treat those names as intentional rather than typos.
+Current package line: `0.19.0`. The namespace, assemblies, project folders, and NuGet IDs are `AvaloniaWebview.React`; the public WebView control type is still named `AvaloniaReactWebView`. The npm scope remains `@avalonia-react/bridge`. Treat those names as intentional rather than typos.
 
 ## Choose the layer first
 
@@ -39,10 +39,10 @@ Read the relevant reference file after you understand the layer:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="AvaloniaWebview.React" Version="0.18.0" />
-  <PackageReference Include="AvaloniaWebview.React.SourceGenerator" Version="0.18.0" />
+  <PackageReference Include="AvaloniaWebview.React" Version="0.19.0" />
+  <PackageReference Include="AvaloniaWebview.React.SourceGenerator" Version="0.19.0" />
   <!-- Optional: Debug-time Vite startup -->
-  <PackageReference Include="AvaloniaWebview.React.Vite" Version="0.18.0" />
+  <PackageReference Include="AvaloniaWebview.React.Vite" Version="0.19.0" />
 </ItemGroup>
 ```
 

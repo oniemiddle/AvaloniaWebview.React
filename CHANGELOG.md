@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-10-18
+
+### Added
+
+- `samples/ReactHost` publishes as a self-contained Native AOT `win-x64` desktop app through
+  `samples/ReactHost/Properties/PublishProfiles/win-x64-aot.pubxml` and `eng/publish-aot.ps1`.
+  The publish profile keeps `PublishAot` project-local so it cannot flow into the
+  `netstandard2.0` source generator, and the sample's host message payload is the generated
+  `ReactAck` DTO so no reflection-based JSON metadata is needed at run time.
+- `eng/verify-published-app.ps1` launches a published `ReactHost` build from an isolated copy and
+  writes a JSON + PNG report (window title, WebView2 process tree, window capture, React
+  readiness note).
+  `eng/publish-aot.ps1 -CertificateThumbprint` optionally Authenticode-signs the published
+  executable with `signtool` and verifies the signature.
+
+### Fixed
+
+- The sample's Vite build dedupes `react`/`react-dom`. `@avalonia-react/bridge` is a `file:`
+  dependency (a junction to `client`) that carries its own React dev dependencies, so after
+  `npm ci` in `client` the production bundle contained a second React copy and the page failed at
+  startup with `Cannot read properties of null (reading 'useMemo')`.
+
 ## [0.18.0] - 2026-10-18
 
 ### Added

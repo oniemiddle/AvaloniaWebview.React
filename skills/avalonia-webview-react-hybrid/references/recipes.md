@@ -18,9 +18,9 @@ These examples target AvaloniaWebview.React `0.17.x` and .NET 10.
 
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
-    <PackageReference Include="AvaloniaWebview.React" Version="0.18.0" />
-    <PackageReference Include="AvaloniaWebview.React.SourceGenerator" Version="0.18.0" />
-    <PackageReference Include="AvaloniaWebview.React.Vite" Version="0.18.0" />
+    <PackageReference Include="AvaloniaWebview.React" Version="0.19.0" />
+    <PackageReference Include="AvaloniaWebview.React.SourceGenerator" Version="0.19.0" />
+    <PackageReference Include="AvaloniaWebview.React.Vite" Version="0.19.0" />
     <AdditionalFiles Include="..\react-app\src\FrontendApi.d.ts" />
   </ItemGroup>
 </Project>
