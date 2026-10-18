@@ -9,8 +9,8 @@
     <PackageTags>Avalonia;React;WebView;Hybrid;TypeScript</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/oniemiddle/Avalonia.React</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/oniemiddle/Avalonia.React</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/oniemiddle/AvaloniaWebview.React</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/oniemiddle/AvaloniaWebview.React</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>

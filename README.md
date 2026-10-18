@@ -1,4 +1,4 @@
-# Avalonia.React
+# AvaloniaWebview.React
 
 A small .NET 10 toolkit for hosting a React frontend in Avalonia 12 with Avalonia's official `NativeWebView` and a JSON message bridge.
 
@@ -112,7 +112,7 @@ Start the frontend with `npm run dev -- --host 0.0.0.0`. Keep the Vite port in s
 <react:AvaloniaReactWebView SourceMode="Auto" />
 ```
 
-The Avalonia.React MSBuild targets emit assembly metadata into the host executable: Debug builds resolve `Auto` to the Vite server, other configurations resolve to embedded assets (or `AssemblyEmbeddedAssets` when `AvaloniaReactEmbedAssetsInAssembly` is enabled). Override the defaults with `AvaloniaReactDefaultSourceMode`, `AvaloniaReactDevServerUrl`, or `AvaloniaReactEnableDevTools`, or set `SourceMode` to `Manual`, `DevServer`, `EmbeddedAssets`, or `AssemblyEmbeddedAssets`. Set `AvaloniaReactEmitAssemblyMetadata=false` to opt out of the generated metadata. `Source` is only assigned when the control enters the visual tree, so the source can be configured from XAML or a constructor.
+The AvaloniaWebview.React MSBuild targets emit assembly metadata into the host executable: Debug builds resolve `Auto` to the Vite server, other configurations resolve to embedded assets (or `AssemblyEmbeddedAssets` when `AvaloniaReactEmbedAssetsInAssembly` is enabled). Override the defaults with `AvaloniaReactDefaultSourceMode`, `AvaloniaReactDevServerUrl`, or `AvaloniaReactEnableDevTools`, or set `SourceMode` to `Manual`, `DevServer`, `EmbeddedAssets`, or `AssemblyEmbeddedAssets`. Set `AvaloniaReactEmitAssemblyMetadata=false` to opt out of the generated metadata. `Source` is only assigned when the control enters the visual tree, so the source can be configured from XAML or a constructor.
 
 ### Use the built-in host view
 
@@ -369,7 +369,7 @@ Build the npm tarball with `cd client && npm pack --pack-destination ../artifact
 ## Build and test
 
 ```sh
-dotnet build Avalonia.React.slnx -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
+dotnet build AvaloniaWebview.React.slnx -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
 dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
 dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
 npm --prefix client run build
@@ -411,7 +411,7 @@ The source generator cannot emit a `JsonSerializerContext` automatically because
 - Windows uses the installed Microsoft Edge WebView2 runtime.
 - macOS uses the system WKWebView.
 - Linux needs WebKitGTK or WPE WebKit runtime libraries.
-- `Avalonia.React` targets `net10.0`; Windows hosts can reference it from a `net10.0-windows` project.
+- `AvaloniaWebview.React` targets `net10.0`; Windows hosts can reference it from a `net10.0-windows` project.
 - The sample builds for `net10.0-windows` and `net10.0`; both use the same loopback HTTP asset server.
 - The embedded asset pipeline in this repository targets desktop host applications; mobile and browser hosting are not covered by the sample or the MSBuild targets.
 

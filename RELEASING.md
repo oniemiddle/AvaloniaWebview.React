@@ -1,6 +1,6 @@
-# Releasing Avalonia.React
+# Releasing AvaloniaWebview.React
 
-Avalonia.React publishes three NuGet packages and one npm package:
+AvaloniaWebview.React publishes three NuGet packages and one npm package:
 
 - `AvaloniaWebview.React`
 - `AvaloniaWebview.React.Vite`
@@ -23,7 +23,7 @@ NuGet uses **Trusted Publishing** (GitHub OIDC); no long-lived NuGet API key is 
 
 1. On nuget.org, open **Account → Trusted Publishing** and add a policy for:
    - Repository owner: `oniemiddle`
-   - Repository: `Avalonia.React`
+   - Repository: `AvaloniaWebview.React`
    - Workflow file: `release.yml`
    - Environment: leave empty unless you add a matching GitHub environment to the release job
 2. Add the repository secret `NUGET_USER` with your nuget.org profile name (not the email address).
@@ -50,7 +50,7 @@ Background: [nuget.org Trusted Publishing](https://learn.microsoft.com/nuget/nug
 Run the same checks before tagging:
 
 ```sh
-dotnet build Avalonia.React.slnx -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
+dotnet build AvaloniaWebview.React.slnx -c Release -p:AvaloniaReactBuildOnBuild=false -p:AvaloniaReactAutoStart=false
 dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release
 dotnet test tests/Avalonia.React.SourceGenerator.Tests/Avalonia.React.SourceGenerator.Tests.csproj -c Release
 

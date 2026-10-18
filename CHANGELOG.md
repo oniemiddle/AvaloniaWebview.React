@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.2] - 2026-10-18
+
+### Changed
+
+- Renamed the GitHub repository and project to `AvaloniaWebview.React`: the solution file is now
+  `AvaloniaWebview.React.slnx`, and repository URLs, package metadata, and documentation use the new
+  name. C# namespaces and assemblies remain `Avalonia.React`; the NuGet package IDs were renamed in
+  0.16.1.
+- Updated the nuget.org Trusted Publishing policy for the renamed repository; this is the first
+  publish under the new policy, which activates it permanently.
+- Package version is `0.16.2`; client version is `0.16.2`.
+
 ## [0.16.1] - 2026-10-18
 
 ### Changed

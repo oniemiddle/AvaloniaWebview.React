@@ -4,12 +4,12 @@
     <PackageId>AvaloniaWebview.React.Vite</PackageId>
     <Version>$(AvaloniaReactVersion)</Version>
     <Authors>Avalonia.React contributors</Authors>
-    <Description>Vite development server integration for Avalonia.React desktop apps.</Description>
+    <Description>Vite development server integration for AvaloniaWebview.React desktop apps.</Description>
     <PackageTags>Avalonia;React;Vite;WebView;Build</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/oniemiddle/Avalonia.React</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/oniemiddle/Avalonia.React</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/oniemiddle/AvaloniaWebview.React</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/oniemiddle/AvaloniaWebview.React</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts\packages</PackageOutputPath>

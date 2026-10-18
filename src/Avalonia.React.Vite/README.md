@@ -1,4 +1,4 @@
-# Avalonia.React.Vite
+# AvaloniaWebview.React.Vite
 
 Install this extension alongside `AvaloniaWebview.React` to start a Vite frontend when an Avalonia host is built in Debug configuration. It starts Node directly with Vite's CLI, installs dependencies with `npm ci` when `node_modules` is missing, and waits until the configured URL accepts a connection.
 

@@ -6,7 +6,7 @@ TypeScript bridge used by the React frontend hosted in `AvaloniaReactWebView`. T
 npm install @avalonia-react/bridge
 ```
 
-When working inside the Avalonia.React repository, point the example app at the local package instead:
+When working inside the AvaloniaWebview.React repository, point the example app at the local package instead:
 
 ```sh
 npm install ../../client
@@ -51,4 +51,4 @@ The message format is `{ "type": string, "payload": any JSON value }`. API calls
 
 The module can be imported in Node/SSR environments without a `window`; `isBridgeAvailable()` then returns `false`, and `subscribe()` returns a no-op unsubscribe function. The package is ESM-only and includes `dist/index.d.ts` alongside `dist/index.js`.
 
-Maintainers can validate the publishable tarball with `npm run verify:package`; see [RELEASING.md](https://github.com/oniemiddle/Avalonia.React/blob/main/RELEASING.md) for the full release checklist.
+Maintainers can validate the publishable tarball with `npm run verify:package`; see [RELEASING.md](https://github.com/oniemiddle/AvaloniaWebview.React/blob/main/RELEASING.md) for the full release checklist.

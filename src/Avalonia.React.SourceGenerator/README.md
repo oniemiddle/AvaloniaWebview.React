@@ -1,6 +1,6 @@
-# Avalonia.React.SourceGenerator
+# AvaloniaWebview.React.SourceGenerator
 
-Install this analyzer package into an Avalonia.React host project. Exported TypeScript interfaces in `.d.ts` files under the project are translated into C# API interfaces during compilation.
+Install this analyzer package into an AvaloniaWebview.React host project. Exported TypeScript interfaces in `.d.ts` files under the project are translated into C# API interfaces during compilation.
 
 ```ts
 // @namespace MyApp.Frontend

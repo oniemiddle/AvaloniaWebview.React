@@ -9,12 +9,12 @@
     <PackageId>AvaloniaWebview.React.SourceGenerator</PackageId>
     <Version>$(AvaloniaReactVersion)</Version>
     <Authors>Avalonia.React contributors</Authors>
-    <Description>Generates C# API interfaces from TypeScript declaration files for Avalonia.React.</Description>
+    <Description>Generates C# API interfaces from TypeScript declaration files for AvaloniaWebview.React.</Description>
     <PackageTags>Avalonia;React;TypeScript;SourceGenerator</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/oniemiddle/Avalonia.React</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/oniemiddle/Avalonia.React</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/oniemiddle/AvaloniaWebview.React</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/oniemiddle/AvaloniaWebview.React</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <IncludeBuildOutput>false</IncludeBuildOutput>
