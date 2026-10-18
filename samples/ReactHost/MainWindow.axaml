@@ -6,16 +6,52 @@
         Width="1100"
         Height="760"
         Background="{DynamicResource SemiColorBackground0}">
-  <!-- ReactHostView supplies the loading/error overlay and enables the Windows composition needed
-       to render it above WebView2. WaitForBridgeReady hides the overlay after the React client
-       calls signalReady(), with a fallback timeout. -->
-  <react:ReactHostView x:Name="ReactHost"
-                       SourceMode="Auto"
-                       WaitForBridgeReady="True"
-                       BridgeReadyTimeout="0:0:10"
-                       LoadingText="正在启动 Avalonia + React…"
-                       RetryText="重试加载"
-                       ErrorTextFormat="页面加载失败：{0}"
-                       MessageReceived="HandleMessageReceived"
-                       Background="{DynamicResource SemiColorBackground0}" />
+  <DockPanel>
+    <!-- Native toolbar: demonstrates host-to-React calls, shared sessions and runtime preflight. -->
+    <Border DockPanel.Dock="Top"
+            Padding="18,12"
+            Background="{DynamicResource SemiColorBackground1}"
+            BorderBrush="{DynamicResource SemiColorBorder}"
+            BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="4">
+          <TextBlock Text="AvaloniaWebview.React 0.18 功能演示"
+                     FontSize="15"
+                     FontWeight="SemiBold" />
+          <TextBlock x:Name="HostStatusText"
+                     Text="正在检查 WebView 运行时…"
+                     FontSize="12"
+                     Opacity="0.72"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    VerticalAlignment="Center">
+          <Button x:Name="HostGreetButton"
+                  Content="宿主 → React"
+                  Click="HandleHostGreetClick" />
+          <Button x:Name="SecondWindowButton"
+                  Content="打开共享窗口"
+                  Click="HandleOpenSecondWindowClick" />
+          <Button x:Name="IsolatedWindowButton"
+                  Content="打开隔离窗口"
+                  Click="HandleOpenIsolatedWindowClick" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ReactHostView supplies the loading/error overlay and enables the Windows composition
+         needed to render it above WebView2. WaitForBridgeReady hides the overlay after the React
+         client calls useSignalReady(), with a fallback timeout. -->
+    <react:ReactHostView x:Name="ReactHost"
+                         SourceMode="Auto"
+                         WaitForBridgeReady="True"
+                         BridgeReadyTimeout="0:0:10"
+                         LoadingText="正在启动 Avalonia + React…"
+                         RetryText="重试加载"
+                         ErrorTextFormat="页面加载失败：{0}"
+                         MessageReceived="HandleMessageReceived"
+                         Background="{DynamicResource SemiColorBackground0}" />
+  </DockPanel>
 </Window>

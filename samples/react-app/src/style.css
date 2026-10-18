@@ -13,4 +13,6 @@ body { color: var(--semi-color-text-0); background: var(--semi-color-bg-0); }
 .stats-row { margin-bottom: 20px; }
 .stats-row .semi-card { height: 100%; }
 .service-card, .bridge-card { margin-bottom: 18px; }
-.service-card .semi-card-body, .bridge-card .semi-card-body { padding-top: 0; }
+.service-card .semi-card-body { padding-top: 0; }
+.bridge-card .semi-card { height: 100%; }
+.bridge-card .semi-card-body { padding-top: 0; }

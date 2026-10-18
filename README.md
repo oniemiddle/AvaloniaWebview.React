@@ -384,7 +384,16 @@ dotnet run --project samples/ReactHost -f net10.0-windows
 dotnet run --project samples/ReactHost -f net10.0
 ```
 
-The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app calls `signalReady()` from `@avalonia-react/bridge` after React mounts. The sample window uses `ReactHostView` with `SourceMode="Auto"` and `WaitForBridgeReady="True"`, so the built-in themed overlay replaces the previous hand-written loading/error UI; the code-behind only registers the generated API and handles the demo messages. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting, and the "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
+The sample now demonstrates the 0.18 feature set end to end:
+
+- **React hooks** — `App.tsx` uses `useSignalReady`, `useAvaloniaMessage`, `useHostTheme`, `useBridgeAvailable`, `useHostApi`, `useHostApiInvoke`, and `useReactHandler`; `main.tsx` only handles the pre-render theme so the initial paint matches the host.
+- **Host → React** — the native toolbar's "宿主 → React" button calls `InvokeReactAsync<string>("host:greet", ...)`; the React side handles it with `useReactHandler` and returns a string to the host status bar.
+- **Generated DTO/enum/list JSON** — `FrontendApi.d.ts` defines `RuntimeSnapshot`, `ServiceHealth`, and `getRuntimeSnapshot()`. The React "运行时快照" card renders the generated DTO, string enum, and string list; no handwritten `JsonSerializerContext` is needed.
+- **Multi-window** — "打开共享窗口" creates another `MainWindow` using `ReactWebViewSession.Shared` and the shared loopback asset server; the localStorage counter is shared between those windows. "打开隔离窗口" uses `ReactWebViewSession.CreateEphemeral()` and starts with its own storage.
+- **Runtime preflight** — the top status bar shows `ReactWebViewAvailability.Check()` output (engine, version, adapter), and the generated snapshot reports the same runtime information.
+- **Reparenting** — `ReactHostView` still preserves the native WebView across detach/attach by default.
+
+The service table is a separate dynamic module loaded only when requested. The "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
 
 Build all three NuGet packages with:
 
@@ -468,7 +477,7 @@ var privateHost = new ReactHostView
 
 `CreateEphemeral()` uses WebView2 InPrivate mode, a non-persistent WKWebView store, or a WebKitGTK ephemeral data manager where the platform supports it. Host API registrations are still per `ReactWebView`; register the APIs each window needs, or share application services. Shared browser storage does not grant a window access to another window's registered .NET APIs.
 
-The sample creates a second window when `AVALONIA_REACT_MULTI_WINDOW=1` is set.
+The sample's native toolbar opens a shared window and an isolated window; setting `AVALONIA_REACT_MULTI_WINDOW=1` also opens a second shared window at startup.
 
 ## Runtime availability preflight
 
