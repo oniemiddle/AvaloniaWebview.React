@@ -140,6 +140,26 @@ export function HostPanel() {
 
 `react` is an optional peer dependency; non-React pages can keep importing the root package only.
 
+### Host-to-React request/response
+
+```tsx
+import { registerReactHandler } from "@avalonia-react/bridge";
+
+const unregister = registerReactHandler<{ title: string }>(
+  "dialog:confirm",
+  async (payload, { signal }) => await showConfirm(payload.title, signal),
+);
+```
+
+```csharp
+var confirmed = await ReactHost.InvokeReactAsync<bool>(
+    "dialog:confirm",
+    new { title = "Delete this item?" },
+    TimeSpan.FromSeconds(10));
+```
+
+The React handler receives an `AbortSignal`; .NET sends `avalonia:react:cancel` when `ReactInvokeTimeout` expires or the caller cancels. A missing handler returns an error rather than hanging. Register handlers after the module loads; use `useReactHandler` for a React component version.
+
 ## DTOs and enums
 
 ```ts

@@ -88,6 +88,14 @@ This is the security boundary, not a bridge bug.
   <AvaloniaReactGenerateCancellationToken>true</AvaloniaReactGenerateCancellationToken>
   ```
 
+### Host-to-React call hangs or fails
+
+- Confirm React called `registerReactHandler("name", ...)` (or `useReactHandler`) before `InvokeReactAsync` runs.
+- A missing handler returns an error containing `No React handler registered`.
+- `InvokeReactAsync` times out after `ReactInvokeTimeout` (10s default); pass an explicit timeout or increase the property.
+- A handler error propagates as `InvalidOperationException` with the React error message.
+- On timeout/cancellation, .NET sends `avalonia:react:cancel`; honor the handler's `AbortSignal` to stop work.
+
 ### API works untrimmed, fails trimmed
 
 - Use `HostApiBridge.Register(...)`, not the reflection `RegisterApi<TApi>` overload.

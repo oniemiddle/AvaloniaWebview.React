@@ -56,6 +56,7 @@ This reference describes the public surface of AvaloniaWebview.React `0.17.x`.
 | `IBrush? OverlayBackground` | `null` | Custom overlay background; otherwise theme-derived. |
 | `bool EnableDevTools` | build metadata | Requests platform developer tools. |
 | `TimeSpan ApiInvokeTimeout` | 30s | Host API timeout; `TimeSpan.Zero` disables. |
+| `TimeSpan ReactInvokeTimeout` | 10s | Host-to-React handler timeout; `TimeSpan.Zero` disables. |
 | `int MaxIncomingMessageCharacters` | 4,000,000 | Incoming bridge message limit; `<= 0` disables. |
 | `JsonSerializerOptions BridgeJsonSerializerOptions` | generated defaults or Web defaults | Payload/result serialization options. |
 | `bool PreserveWebViewOnDetach` | `true` on `ReactHostView` | Reparent instead of destroying on detach. |
@@ -69,6 +70,8 @@ This reference describes the public surface of AvaloniaWebview.React `0.17.x`.
 | `RegisterApi(string apiName, IReadOnlyDictionary<string, ReactApiMethodHandler> methods)` | Low-level reflection-free registration used by generated helpers. |
 | `UnregisterApi(string apiName)` | Removes a registered API. |
 | `PostMessageAsync<T>(string type, T payload)` | Sends a host message to React; queued until the page is ready. |
+| `InvokeReactAsync(string handler, object? payload = null, TimeSpan? timeout = null, CancellationToken cancellationToken = default)` | Calls a registered React handler and waits for its result. Annotated for trimming/AOT. |
+| `InvokeReactAsync<T>(...)` | Same, deserializes the React result to `T`. |
 | `Reload()` | Reloads the page and resets load state. |
 | `ApplySourceMode()` | Applies `SourceMode` immediately. |
 | `GoBack()`, `GoForward()`, `Stop()` | History/navigation controls. |
@@ -121,6 +124,17 @@ export function invokeHostApiWithOptions<T>(
   args: readonly unknown[],
   options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<T>;
+
+export interface ReactHandlerContext { signal: AbortSignal }
+export type ReactHandler<T> = (
+  payload: T,
+  context: ReactHandlerContext,
+) => unknown | Promise<unknown>;
+
+export function registerReactHandler<T>(
+  handlerName: string,
+  handler: ReactHandler<T>,
+): () => void;
 ```
 
 Constants:
@@ -132,6 +146,9 @@ export const bridgeMessageTypes = {
   invoke: "avalonia:invoke",
   invokeResult: "avalonia:invoke:result",
   invokeCancel: "avalonia:invoke:cancel",
+  reactInvoke: "avalonia:react:invoke",
+  reactResult: "avalonia:react:result",
+  reactCancel: "avalonia:react:cancel",
   theme: "theme",
   themeRequest: "theme:request",
   error: "avalonia:error",
@@ -159,6 +176,7 @@ export function useHostApiInvoke<T>(
   invoke: (...args: unknown[]) => Promise<T>;
   cancel: () => void;
 };
+export function useReactHandler<T>(name: string, handler: ReactHandler<T>): void;
 ```
 
 `react` is an optional peer dependency. The hooks follow React 18+ rules; effects/subscriptions run in the browser host, and server rendering differs only in that effects do not execute.
@@ -184,6 +202,8 @@ Results return as:
 ```
 
 Cancellation uses `avalonia:invoke:cancel` with `{ "requestId": "…" }`. Timeout, abort, navigation, and page unload all trigger cancellation for host implementations that accept a `CancellationToken`.
+
+Host-to-React calls use `avalonia:react:invoke` with `{ requestId, handler, payload }`; React replies with `avalonia:react:result` containing `{ requestId, result }` or `{ requestId, error }`. The host sends `avalonia:react:cancel` to abort the handler's `AbortSignal` on timeout/cancellation.
 
 Reserved message types cannot be reused. Do not send application payloads as `avalonia:ready`, `avalonia:invoke`, `avalonia:invoke:result`, `avalonia:invoke:cancel`, `theme`, `theme:request`, or `avalonia:error`.
 

@@ -45,6 +45,33 @@ const value = await invokeHostApiWithOptions<string>(
 
 When a call times out, is aborted, or the page unloads, the client also sends the reserved `avalonia:invoke:cancel` message so the host can cancel the implementation's `CancellationToken`. Calls rejected because the host page unloads reject with an `Error` instead of staying pending forever. `isBridgeAvailable()` tells whether the page runs inside Avalonia's WebView, and `bridgeMessageTypes` lists the reserved bridge message names.
 
+### Host-to-React calls
+
+The .NET host can call a React handler and wait for a result:
+
+```ts
+import { registerReactHandler } from "@avalonia-react/bridge";
+
+const unregister = registerReactHandler<{ title: string }>(
+  "dialog:confirm",
+  async (payload, { signal }) => {
+    return await showConfirm(payload.title, signal);
+  },
+);
+
+// Or, inside a React component:
+// useReactHandler("dialog:confirm", async (payload, { signal }) => ...);
+```
+
+```csharp
+var confirmed = await ReactHost.InvokeReactAsync<bool>(
+    "dialog:confirm",
+    new { title = "Delete this item?" },
+    TimeSpan.FromSeconds(10));
+```
+
+`registerReactHandler` returns an unsubscribe function. The handler receives an `AbortSignal` that aborts when .NET times out, cancels, navigates, or shuts down. `InvokeReactAsync` throws when the handler rejects or no handler is registered, and uses `ReactInvokeTimeout` by default. Use `useReactHandler` for a React component so the latest handler is used without resubscribing.
+
 ### React hooks
 
 React users can import hooks from the `/react` subpath. React is an optional peer dependency; the core bridge remains usable without it.
@@ -85,6 +112,7 @@ export function HostPanel() {
 - `useSignalReady(payload?)` calls `signalReady()` after mount.
 - `useHostApiInvoke(api, method, options?)` exposes `data`, `error`, `loading`, `invoke`, and `cancel`; a new call cancels the previous one and cleanup aborts pending work.
 - `useBridgeAvailable()` reports whether the page is inside Avalonia's WebView.
+- `useReactHandler(name, handler)` keeps a host-to-React handler current without resubscribing.
 
 The client also forwards `window` errors and unhandled promise rejections as the reserved `avalonia:error` message, which raises `AvaloniaReactWebView.JavaScriptError` on the host. Duplicate errors are reported at most once, and reporting is disabled when the bridge is unavailable.
 

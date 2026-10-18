@@ -4,10 +4,12 @@ import {
   createHostApiProxy,
   invokeHostApiWithOptions,
   isBridgeAvailable,
+  registerReactHandler,
   requestTheme,
   signalReady,
   subscribe,
   type HostApiCallOptions,
+  type ReactHandler,
 } from "./index.js";
 
 export type HostTheme = "light" | "dark";
@@ -27,6 +29,18 @@ export function useAvaloniaMessage<T>(type: string, handler: (payload: T) => voi
   useEffect(() => {
     return subscribe<T>(type, payload => handlerRef.current(payload));
   }, [type]);
+}
+
+/** Registers the latest host-to-React handler for a name without resubscribing. */
+export function useReactHandler<T>(name: string, handler: ReactHandler<T>): void {
+  const handlerRef = useRef(handler);
+  useEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
+
+  useEffect(() => {
+    return registerReactHandler<T>(name, (payload, context) => handlerRef.current(payload, context));
+  }, [name]);
 }
 
 /** True when the page is running inside Avalonia's native WebView bridge. */

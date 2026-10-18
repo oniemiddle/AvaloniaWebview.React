@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - React integration hooks under `@avalonia-react/bridge/react`: `useHostApi`,
   `useHostApiInvoke`, `useAvaloniaMessage`, `useHostTheme`, `useSignalReady`, and
   `useBridgeAvailable`. React is an optional peer dependency; the core bridge remains usable without it.
+- Host-to-React request/response calls: `registerReactHandler`/`useReactHandler` on the client and
+  `InvokeReactAsync`/`InvokeReactAsync<T>` on the host, with timeout, cancellation, errors, and the
+  `ReactInvokeTimeout` setting.
 
 ## [0.17.0] - 2026-10-18
 

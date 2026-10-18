@@ -181,6 +181,13 @@ public sealed class ReactHostView : Grid, IDisposable
         set => WebView.ApiInvokeTimeout = value;
     }
 
+    /// <summary>Gets or sets how long the host waits for a registered React handler to respond.</summary>
+    public TimeSpan ReactInvokeTimeout
+    {
+        get => WebView.ReactInvokeTimeout;
+        set => WebView.ReactInvokeTimeout = value;
+    }
+
     /// <summary>Gets the additional origins allowed to navigate inside the WebView.</summary>
     public IList<Uri> AllowedOrigins => WebView.AllowedOrigins;
 
@@ -334,6 +341,26 @@ public sealed class ReactHostView : Grid, IDisposable
     [RequiresUnreferencedCode("PostMessageAsync serializes the payload with reflection-based System.Text.Json.")]
     [RequiresDynamicCode("PostMessageAsync JSON serialization may require runtime code generation.")]
     public Task<string?> PostMessageAsync<T>(string type, T payload) => WebView.PostMessageAsync(type, payload);
+
+    /// <summary>Invokes a handler registered by the React client.</summary>
+    [RequiresUnreferencedCode("InvokeReactAsync serializes the payload with reflection-based System.Text.Json.")]
+    [RequiresDynamicCode("InvokeReactAsync JSON serialization may require runtime code generation.")]
+    public Task InvokeReactAsync(
+        string handler,
+        object? payload = null,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default) =>
+        WebView.InvokeReactAsync(handler, payload, timeout, cancellationToken);
+
+    /// <summary>Invokes a React handler and deserializes its result.</summary>
+    [RequiresUnreferencedCode("InvokeReactAsync serializes the payload and deserializes the result with reflection-based System.Text.Json.")]
+    [RequiresDynamicCode("InvokeReactAsync JSON serialization may require runtime code generation.")]
+    public Task<T?> InvokeReactAsync<T>(
+        string handler,
+        object? payload = null,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default) =>
+        WebView.InvokeReactAsync<T>(handler, payload, timeout, cancellationToken);
 
     /// <summary>Reloads the current page.</summary>
     public bool Reload() => WebView.Reload();

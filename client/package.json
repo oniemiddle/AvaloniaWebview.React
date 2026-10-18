@@ -57,7 +57,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --test test/bridge.test.mjs test/ssr.test.mjs test/react-hooks.test.mjs",
+    "test": "node --test test/bridge.test.mjs test/ssr.test.mjs test/react-hooks.test.mjs test/react-invoke.test.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm test && npm run verify:package"

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
@@ -21,6 +22,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private readonly Dictionary<string, ApiRegistration> _apis = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IReadOnlyDictionary<string, ReactApiMethodHandler>> _apiHandlers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CancellationTokenSource> _pendingInvocations = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<ReactInvokeResult>> _pendingReactInvocations = new(StringComparer.Ordinal);
     private readonly ReactMessageQueue _messageQueue = new();
     private readonly List<Uri> _allowedOrigins = [];
     private readonly List<Uri> _trustedApiOrigins = [];
@@ -177,6 +179,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
     /// error. Defaults to 30 seconds; set to <see cref="TimeSpan.Zero"/> to disable the timeout.
     /// </summary>
     public TimeSpan ApiInvokeTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Gets or sets how long the host waits for a registered React handler to return a result.
+    /// Defaults to 10 seconds; set to <see cref="TimeSpan.Zero"/> to disable the timeout.
+    /// </summary>
+    public TimeSpan ReactInvokeTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Gets the additional origins allowed to navigate inside the WebView when
@@ -356,6 +364,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         var transport = _assetTransport;
         _assetTransport = null;
         CancelPendingInvocations(dispose: true);
+        CancelPendingReactInvocations("The WebView was shut down before the React handler responded.");
         _messageQueue.FailAll(new ObjectDisposedException(nameof(AvaloniaReactWebView)));
         _apis.Clear();
         _apiHandlers.Clear();
@@ -463,6 +472,143 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
         var payloadJson = SerializeBridgeValue(payload);
         return PostJsonAsync(type, payloadJson);
+    }
+
+    /// <summary>
+    /// Invokes a handler registered with <c>registerReactHandler</c> in the React client.
+    /// </summary>
+    /// <param name="handler">The handler name registered by React.</param>
+    /// <param name="payload">Any JSON serializable payload.</param>
+    /// <param name="timeout">Timeout override; defaults to <see cref="ReactInvokeTimeout"/>.</param>
+    /// <param name="cancellationToken">Cancels waiting and asks React to abort the handler.</param>
+    [RequiresUnreferencedCode("InvokeReactAsync serializes the payload with reflection-based System.Text.Json.")]
+    [RequiresDynamicCode("InvokeReactAsync JSON serialization may require runtime code generation.")]
+    public Task InvokeReactAsync(
+        string handler,
+        object? payload = null,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default) =>
+        InvokeReactAsync<object?>(handler, payload, timeout, cancellationToken);
+
+    /// <summary>
+    /// Invokes a handler registered with <c>registerReactHandler</c> and deserializes its result.
+    /// </summary>
+    [RequiresUnreferencedCode("InvokeReactAsync serializes the payload and deserializes the result with reflection-based System.Text.Json.")]
+    [RequiresDynamicCode("InvokeReactAsync JSON serialization may require runtime code generation.")]
+    public async Task<T?> InvokeReactAsync<T>(
+        string handler,
+        object? payload = null,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfShutdown();
+        ArgumentException.ThrowIfNullOrWhiteSpace(handler);
+
+        var requestId = Guid.NewGuid().ToString("N");
+        var completion = new TaskCompletionSource<ReactInvokeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pendingReactInvocations.TryAdd(requestId, completion))
+        {
+            throw new InvalidOperationException("Could not allocate a React invocation request id.");
+        }
+
+        var effectiveTimeout = timeout ?? ReactInvokeTimeout;
+        var payloadJson = SerializeBridgeValue(payload);
+        var body = "{\"requestId\":" + QuoteJson(requestId) +
+            ",\"handler\":" + QuoteJson(handler) +
+            ",\"payload\":" + payloadJson + "}";
+
+        try
+        {
+            await PostJsonAsync(ReactBridgeMessages.ReactInvoke, body).ConfigureAwait(false);
+
+            using var timeoutSource = new CancellationTokenSource(
+                effectiveTimeout > TimeSpan.Zero ? effectiveTimeout : Timeout.InfiniteTimeSpan);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                timeoutSource.Token);
+            var result = await completion.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+            if (result.Error is not null)
+            {
+                throw new InvalidOperationException(result.Error);
+            }
+
+            if (result.Result is not { } element || element.ValueKind == JsonValueKind.Null)
+            {
+                return default;
+            }
+
+            return element.Deserialize<T>(BridgeJsonSerializerOptions);
+        }
+        catch (OperationCanceledException)
+        {
+            SendReactInvokeCancel(requestId);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"The React handler '{handler}' did not respond within {effectiveTimeout.TotalSeconds:0.##} seconds.");
+            }
+
+            throw;
+        }
+        finally
+        {
+            _pendingReactInvocations.TryRemove(requestId, out _);
+        }
+    }
+
+    private void SendReactInvokeCancel(string requestId)
+    {
+        try
+        {
+            _ = PostJsonAsync(
+                ReactBridgeMessages.ReactInvokeCancel,
+                "{\"requestId\":" + QuoteJson(requestId) + "}");
+        }
+        catch (Exception)
+        {
+            // The page may already be unloading; cancellation is best-effort.
+        }
+    }
+
+    private void HandleReactResult(JsonElement payload)
+    {
+        if (!IsHostApiOriginTrusted(out var pageOrigin))
+        {
+            RaiseSecurityViolation(
+                "React invocation results are not allowed from this page origin.",
+                pageOrigin);
+            return;
+        }
+
+        if (!payload.TryGetProperty("requestId", out var idElement) ||
+            idElement.GetString() is not { Length: > 0 } requestId ||
+            !_pendingReactInvocations.TryRemove(requestId, out var completion))
+        {
+            return;
+        }
+
+        string? error = null;
+        if (payload.TryGetProperty("error", out var errorElement) &&
+            errorElement.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+        {
+            error = errorElement.ToString();
+        }
+
+        var result = payload.TryGetProperty("result", out var resultElement)
+            ? resultElement.Clone()
+            : (JsonElement?)null;
+        completion.TrySetResult(new ReactInvokeResult(result, error));
+    }
+
+    private void CancelPendingReactInvocations(string message)
+    {
+        foreach (var entry in _pendingReactInvocations)
+        {
+            if (_pendingReactInvocations.TryRemove(entry.Key, out var completion))
+            {
+                completion.TrySetException(new InvalidOperationException(message));
+            }
+        }
     }
 
     private Task<string?> PostJsonAsync(string type, string payloadJson)
@@ -683,6 +829,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
         _bridgeReady = false;
         CancelPendingInvocations(dispose: false);
+        CancelPendingReactInvocations("The page navigated before the React handler responded.");
         RememberNavigationOrigin(request);
         SetLoadState(ReactLoadState.Loading, null);
     }
@@ -692,6 +839,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         if (!args.IsSuccess)
         {
             CancelPendingInvocations(dispose: false);
+            CancelPendingReactInvocations("The page failed to load before the React handler responded.");
             SetLoadState(ReactLoadState.Failed, args.Request is null
                 ? "The React page failed to load."
                 : $"Navigation to '{args.Request}' failed.");
@@ -1029,6 +1177,12 @@ public sealed class AvaloniaReactWebView : NativeWebView
         if (messageType == ReactBridgeMessages.InvokeCancel)
         {
             Dispatcher.UIThread.Post(() => CancelApiInvocation(payload));
+            return;
+        }
+
+        if (messageType == ReactBridgeMessages.ReactInvokeResult)
+        {
+            Dispatcher.UIThread.Post(() => HandleReactResult(payload));
             return;
         }
 
@@ -1376,6 +1530,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
     }
 
     private sealed record ApiRegistration(object Implementation, IReadOnlyDictionary<string, MethodInfo> Methods);
+
+    private readonly record struct ReactInvokeResult(JsonElement? Result, string? Error);
 
 }
 

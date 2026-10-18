@@ -204,6 +204,7 @@ import {
   useHostApi,
   useHostApiInvoke,
   useHostTheme,
+  useReactHandler,
   useSignalReady,
 } from "@avalonia-react/bridge/react";
 
@@ -221,8 +222,30 @@ useSignalReady({ mounted: true });
 - `useSignalReady` sends the ready handshake after mount.
 - `useHostApiInvoke` provides `data`, `error`, `loading`, `invoke`, `cancel`, and cancels the previous call.
 - `useBridgeAvailable` reports whether the page is inside Avalonia.
+- `useReactHandler` keeps the latest host-to-React handler registered without resubscribing.
 
 `react` is an optional peer dependency; importing `/react` requires React 18+.
+
+### Host-to-React calls
+
+React can register handlers and .NET can await them:
+
+```tsx
+import { registerReactHandler } from "@avalonia-react/bridge";
+
+registerReactHandler<{ title: string }>("dialog:confirm", async (payload, { signal }) => {
+  return await showConfirm(payload.title, signal);
+});
+```
+
+```csharp
+var confirmed = await ReactHost.InvokeReactAsync<bool>(
+    "dialog:confirm",
+    new { title = "Delete this item?" },
+    TimeSpan.FromSeconds(10));
+```
+
+`InvokeReactAsync` waits for `avalonia:react:result`; missing handlers return an error, handler exceptions propagate, and `ReactInvokeTimeout`/cancellation sends `avalonia:react:cancel` to abort the handler's `AbortSignal`. Use `useReactHandler` in a component to keep the handler current.
 
 ## Security boundaries
 
@@ -265,7 +288,7 @@ The host window's asset-server subscription follows the control. Do not create a
 
 Use the generated `HostApiBridge.Register` helper, not the reflection overload.
 
-Primitive and `JsonElement` arguments/results and host messages are written without reflection. DTOs, enums, collections, and custom message payloads need source-generated JSON metadata. For trimmed/AOT apps, define a context covering every root payload type and install it before the WebView is created:
+Primitive and `JsonElement` arguments/results and host messages are written without reflection. DTOs, enums, collections, and custom message payloads — including `InvokeReactAsync` payloads/results — need source-generated JSON metadata. For trimmed/AOT apps, define a context covering every root payload type and install it before the WebView is created:
 
 ```csharp
 using System.Text.Json.Serialization;

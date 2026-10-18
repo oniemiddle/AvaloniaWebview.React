@@ -33,10 +33,29 @@ export const bridgeMessageTypes = {
   invoke: "avalonia:invoke",
   invokeResult: "avalonia:invoke:result",
   invokeCancel: "avalonia:invoke:cancel",
+  reactInvoke: "avalonia:react:invoke",
+  reactResult: "avalonia:react:result",
+  reactCancel: "avalonia:react:cancel",
   theme: "theme",
   themeRequest: "theme:request",
   error: "avalonia:error",
 } as const;
+
+export interface ReactHandlerContext {
+  /** Aborted when the host times out, cancels, navigates, or shuts down. */
+  signal: AbortSignal;
+}
+
+export type ReactHandler<T> = (
+  payload: T,
+  context: ReactHandlerContext,
+) => unknown | Promise<unknown>;
+
+interface ReactInvocationRequest<T = unknown> {
+  requestId: string;
+  handler: string;
+  payload: T;
+}
 
 /** DOM event name used by the host to deliver messages to JavaScript. */
 export const bridgeDomainEvent = "avalonia-react:message";
@@ -212,6 +231,85 @@ export function createHostApiProxy<T extends object>(api: string): T {
     },
   });
 }
+
+const reactHandlers = new Map<string, ReactHandler<unknown>>();
+const pendingReactInvocations = new Map<string, AbortController>();
+
+/**
+ * Registers a handler the .NET host can call with InvokeReactAsync.
+ * Returns an unsubscribe function. Registering the same name replaces the handler.
+ */
+export function registerReactHandler<T>(
+  handlerName: string,
+  handler: ReactHandler<T>,
+): () => void {
+  if (!handlerName.trim()) {
+    throw new Error("React handler name must not be empty.");
+  }
+
+  const entry = handler as ReactHandler<unknown>;
+  reactHandlers.set(handlerName, entry);
+  return () => {
+    if (reactHandlers.get(handlerName) === entry) {
+      reactHandlers.delete(handlerName);
+    }
+  };
+}
+
+function postReactResult(payload: unknown): void {
+  try {
+    postMessage(bridgeMessageTypes.reactResult, payload);
+  } catch {
+    // The bridge can disappear while the page unloads; result delivery is best-effort.
+  }
+}
+
+async function handleReactInvocation(request: ReactInvocationRequest | null | undefined): Promise<void> {
+  const requestId = request?.requestId;
+  const handlerName = request?.handler;
+  if (typeof requestId !== "string" || !requestId || typeof handlerName !== "string" || !handlerName) {
+    return;
+  }
+
+  const handler = reactHandlers.get(handlerName);
+  if (!handler) {
+    postReactResult({
+      requestId,
+      error: `No React handler registered for '${handlerName}'.`,
+    });
+    return;
+  }
+
+  const controller = new AbortController();
+  pendingReactInvocations.set(requestId, controller);
+  try {
+    const result = await handler(request.payload, { signal: controller.signal });
+    if (!controller.signal.aborted) {
+      postReactResult({ requestId, result });
+    }
+  } catch (reason) {
+    if (!controller.signal.aborted) {
+      postReactResult({
+        requestId,
+        error: reason instanceof Error ? reason.message : String(reason),
+      });
+    }
+  } finally {
+    if (pendingReactInvocations.get(requestId) === controller) {
+      pendingReactInvocations.delete(requestId);
+    }
+  }
+}
+
+subscribe<ReactInvocationRequest>(bridgeMessageTypes.reactInvoke, request => {
+  void handleReactInvocation(request);
+});
+
+subscribe<{ requestId?: string }>(bridgeMessageTypes.reactCancel, payload => {
+  if (payload?.requestId) {
+    pendingReactInvocations.get(payload.requestId)?.abort();
+  }
+});
 
 /**
  * Like {@link invokeHostApi}, with timeout and cancellation support.

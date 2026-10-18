@@ -88,7 +88,7 @@ The frontend bridge is published as `@avalonia-react/bridge`:
 npm install @avalonia-react/bridge
 ```
 
-It is ESM-only, includes TypeScript declarations, and forwards the reserved `avalonia:*` messages, host API calls, theme requests, JavaScript errors, cancellation, and timeouts. React projects can use `@avalonia-react/bridge/react` for `useHostApi`, `useHostApiInvoke`, `useAvaloniaMessage`, `useHostTheme`, `useSignalReady`, and `useBridgeAvailable`. Inside this repository the sample uses the local package through `file:../../client`; run `npm --prefix client run build` before installing it.
+It is ESM-only, includes TypeScript declarations, and forwards the reserved `avalonia:*` messages, host API calls, theme requests, JavaScript errors, cancellation, and timeouts. React projects can use `@avalonia-react/bridge/react` for `useHostApi`, `useHostApiInvoke`, `useAvaloniaMessage`, `useHostTheme`, `useSignalReady`, `useBridgeAvailable`, and `useReactHandler`. Inside this repository the sample uses the local package through `file:../../client`; run `npm --prefix client run build` before installing it.
 
 ## Agent skill
 
@@ -314,6 +314,31 @@ await webView.PostMessageAsync("theme", new { theme = "dark" });
 public sealed record ReadyPayload(int Version);
 ```
 
+### Host-to-React calls
+
+For request/response flows initiated by .NET, register a React handler and call it from the host:
+
+```tsx
+import { registerReactHandler } from "@avalonia-react/bridge";
+
+const unregister = registerReactHandler<{ title: string }>(
+  "dialog:confirm",
+  async (payload, { signal }) => {
+    // Use signal to dismiss the dialog when the host times out or cancels.
+    return await showConfirm(payload.title, signal);
+  },
+);
+```
+
+```csharp
+var confirmed = await ReactHost.InvokeReactAsync<bool>(
+    "dialog:confirm",
+    new { title = "Delete this item?" },
+    TimeSpan.FromSeconds(10));
+```
+
+The host waits for `avalonia:react:result`, throws when the handler rejects, and times out after `ReactInvokeTimeout` (10 seconds by default) or the explicit timeout. A timeout or cancellation sends `avalonia:react:cancel`, which aborts the handler's `AbortSignal`. Use `useReactHandler` from `@avalonia-react/bridge/react` to keep a React handler current without re-registering on every render. Unknown handlers return an error to .NET instead of hanging.
+
 `PostMessageAsync` completes when the script runs, but messages sent before the page loads are queued and delivered after a successful navigation. Use `LoadState` and `BridgeReady` to decide when the UI is ready instead of relying on navigation alone:
 
 ```csharp
@@ -396,7 +421,7 @@ The library is marked `IsTrimmable` and `IsAotCompatible`; its trim and AOT anal
 HostApiBridge.Register(webView, new HostApi());
 ```
 
-Generated handlers read `string`, `number`, `boolean`, `DateTimeOffset`, `byte[]`, and `JsonElement` arguments directly from `JsonElement`, and the bridge writes primitive/`JsonElement` results without reflection. DTOs, enums, collections, and custom message payloads still need JSON metadata. For trimmed/Native AOT applications, define a source-generated context covering those types and install it before creating the WebView:
+Generated handlers read `string`, `number`, `boolean`, `DateTimeOffset`, `byte[]`, and `JsonElement` arguments directly from `JsonElement`, and the bridge writes primitive/`JsonElement` results without reflection. DTOs, enums, collections, custom message payloads, and `InvokeReactAsync` payloads/results still need JSON metadata. For trimmed/Native AOT applications, define a source-generated context covering those types and install it before creating the WebView:
 
 ```csharp
 [JsonSerializable(typeof(UserProfile))]
