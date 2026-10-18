@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-18
+
+### Added
+
+- `ReactHostView`, a Grid-based host that composes `AvaloniaReactWebView` with a themed
+  loading/error overlay. It forwards the common configuration properties, events, and methods
+  (`SourceMode`, `RegisterApi`, `PostMessageAsync`, `Reload`, `MessageReceived`, `BridgeReady`,
+  `JavaScriptError`, and others) and exposes `WebView` for advanced use.
+- `WaitForBridgeReady` and `BridgeReadyTimeout` control when the overlay hides; the default
+  behavior hides on navigation completion, so applications without `signalReady()` are unaffected.
+- Customizable overlay text (`LoadingText`, `RetryText`, `ErrorTextFormat`) and
+  `OverlayBackground`; the default overlay background follows the light/dark theme. The built-in
+  retry button reloads the page.
+- The sample now uses `ReactHostView`; its window XAML and code-behind only register the generated
+  API and handle demo messages.
+
+### Changed
+
+- Package version is `0.5.0`.
+- The sample no longer contains any overlay state machine, retry handler, or WebView environment
+  configuration.
+
+### Tests
+
+- Added overlay policy tests (8 cases); the control test suite now has 81 tests.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added

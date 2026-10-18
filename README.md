@@ -80,6 +80,22 @@ Start the frontend with `npm run dev -- --host 0.0.0.0`. Keep the Vite port in s
 
 The Avalonia.React MSBuild targets emit assembly metadata into the host executable: Debug builds resolve `Auto` to the Vite server, other configurations resolve to embedded assets. Override the defaults with `AvaloniaReactDefaultSourceMode`, `AvaloniaReactDevServerUrl`, or `AvaloniaReactEnableDevTools`, or set `SourceMode` to `Manual`, `DevServer`, or `EmbeddedAssets`. Set `AvaloniaReactEmitAssemblyMetadata=false` to opt out of the generated metadata. `Source` is only assigned when the control enters the visual tree, so the source can be configured from XAML or a constructor.
 
+### Use the built-in host view
+
+`ReactHostView` wraps `AvaloniaReactWebView` with a themed loading/error overlay and forwards the common configuration, events, and methods. The overlay hides after navigation, or after the React client's `signalReady()` when `WaitForBridgeReady` is enabled, with a fallback timeout:
+
+```xml
+<react:ReactHostView x:Name="ReactHost"
+                     SourceMode="Auto"
+                     EnableWindowsOffscreenComposition="True"
+                     WaitForBridgeReady="True"
+                     LoadingText="正在启动 Avalonia + React…"
+                     RetryText="重试加载"
+                     ErrorTextFormat="页面加载失败：{0}" />
+```
+
+`ReactHostView` exposes `RegisterApi`, `PostMessageAsync`, `Reload`, `SourceMode`, the load/bridge events, and the underlying `WebView` for advanced use. Set `WaitForBridgeReady="False"` (the default) to hide the overlay as soon as navigation completes. `BridgeReadyTimeout` (10 seconds by default) prevents a missing handshake from keeping the overlay visible forever. `ShowOverlay="False"` disables the built-in overlay entirely.
+
 ### Load state and recovery
 
 The control tracks the page lifecycle and waits for the React ready handshake:
@@ -237,7 +253,7 @@ Then start the Avalonia host in Debug configuration. The Vite extension starts t
 dotnet run --project samples/ReactHost
 ```
 
-The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app calls `signalReady()` from `@avalonia-react/bridge` after React mounts. The sample window declares `SourceMode="Auto"` and `EnableWindowsOffscreenComposition="True"`, so its code-behind only handles load state, the retry button, and the demo messages instead of Debug/Release source selection. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting, and the "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so native loading and error states follow the same light/dark theme as the React UI.
+The sample uses a conventional Vite entry: `index.html` only declares the root element, `main.tsx` renders `<App />` directly, and the app calls `signalReady()` from `@avalonia-react/bridge` after React mounts. The sample window uses `ReactHostView` with `SourceMode="Auto"`, `EnableWindowsOffscreenComposition="True"`, and `WaitForBridgeReady="True"`, so the built-in themed overlay replaces the previous hand-written loading/error UI; the code-behind only registers the generated API and handles the demo messages. The service table is a separate dynamic module loaded only when requested. The workbench then calls the generated .NET API for its greeting, and the "发送消息到 .NET" button demonstrates React-to-host messaging plus a host acknowledgment (`react:ack`). Vite hot reload continues to work inside the native WebView. The Avalonia host uses Semi.Avalonia so the built-in overlay follows the same light/dark theme as the React UI.
 
 Build all three NuGet packages with `dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release`, `dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release`, and `dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release`.
 

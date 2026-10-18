@@ -6,53 +6,16 @@
         Width="1100"
         Height="760"
         Background="{DynamicResource SemiColorBackground0}">
-  <Grid>
-    <!-- SourceMode=Auto picks Vite in Debug and wwwroot in Release from build metadata. -->
-    <react:AvaloniaReactWebView x:Name="ReactView"
-                                SourceMode="Auto"
-                                EnableWindowsOffscreenComposition="True"
-                                Background="{DynamicResource SemiColorBackground0}" />
-
-    <!-- NativeWebView uses an offscreen WebView2 surface on Windows so Avalonia can render this overlay above it. -->
-    <Border x:Name="LoadingOverlay"
-            Background="{DynamicResource SemiColorBackground0}"
-            IsVisible="True">
-      <StackPanel HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  Spacing="16">
-        <Border Width="56"
-                Height="56"
-                CornerRadius="28"
-                Background="{DynamicResource SemiColorPrimaryLight}"
-                HorizontalAlignment="Center">
-          <TextBlock Text="A"
-                     FontSize="28"
-                     FontWeight="Bold"
-                     Foreground="{DynamicResource SemiColorPrimary}"
-                     HorizontalAlignment="Center"
-                     VerticalAlignment="Center" />
-        </Border>
-        <TextBlock Text="正在启动 Avalonia + React"
-                   FontSize="18"
-                   FontWeight="SemiBold"
-                   Foreground="{DynamicResource SemiColorText0}"
-                   HorizontalAlignment="Center" />
-        <ProgressBar x:Name="LoadingIndicator"
-                     Width="240"
-                     Height="5"
-                     IsIndeterminate="True" />
-        <TextBlock x:Name="LoadingDetail"
-                   Text="正在初始化 WebView…"
-                   FontSize="13"
-                   Foreground="{DynamicResource SemiColorText2}"
-                   HorizontalAlignment="Center" />
-        <Button x:Name="RetryButton"
-                Content="重试加载"
-                Foreground="{DynamicResource SemiColorPrimary}"
-                HorizontalAlignment="Center"
-                IsVisible="False"
-                Click="RetryButton_OnClick" />
-      </StackPanel>
-    </Border>
-  </Grid>
+  <!-- ReactHostView supplies the loading/error overlay; EnableWindowsOffscreenComposition lets
+       Avalonia content compose above WebView2. WaitForBridgeReady hides the overlay after the
+       React client calls signalReady(), with a fallback timeout. -->
+  <react:ReactHostView x:Name="ReactHost"
+                       SourceMode="Auto"
+                       EnableWindowsOffscreenComposition="True"
+                       WaitForBridgeReady="True"
+                       BridgeReadyTimeout="0:0:10"
+                       LoadingText="正在启动 Avalonia + React…"
+                       RetryText="重试加载"
+                       ErrorTextFormat="页面加载失败：{0}"
+                       Background="{DynamicResource SemiColorBackground0}" />
 </Window>
