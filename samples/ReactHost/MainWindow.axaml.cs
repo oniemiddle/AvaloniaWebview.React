@@ -1,6 +1,5 @@
 using Avalonia.Controls;
-using Avalonia.Platform;
-using Avalonia.React.EmbeddedAssets;
+using Avalonia.React;
 using ReactHost.Frontend;
 
 namespace ReactHost;
@@ -12,90 +11,44 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         ReactView.RegisterApi<IHostApi>(new HostApi());
+        ReactView.LoadStateChanged += HandleLoadStateChanged;
+        ReactView.BridgeReady += (_, _) => LoadingOverlay.IsVisible = false;
+        ReactView.MessageReceived += HandleMessageReceived;
+    }
 
-        ReactView.EnvironmentRequested += (_, args) =>
+    private void HandleLoadStateChanged(object? sender, ReactLoadStateChangedEventArgs args)
+    {
+        // Keep the overlay up until the React client sends its ready handshake.
+        LoadingOverlay.IsVisible = true;
+        RetryButton.IsVisible = args.State == ReactLoadState.Failed;
+        LoadingIndicator.IsVisible = args.State is ReactLoadState.Loading or ReactLoadState.Idle;
+        LoadingDetail.Text = args.State switch
         {
-            if (args is WindowsWebView2EnvironmentRequestedEventArgs webView2Args)
-            {
-                // Required for Avalonia controls (including the loading overlay) to compose above WebView2.
-                webView2Args.ExperimentalOffscreen = true;
-            }
-        };
-
-        ReactView.NavigationStarted += (_, _) =>
-        {
-            LoadingOverlay.IsVisible = true;
-            LoadingIndicator.IsVisible = true;
-            RetryButton.IsVisible = false;
-            LoadingDetail.Text = "正在加载前端页面…";
-        };
-
-        ReactView.NavigationCompleted += (_, args) =>
-        {
-            if (!args.IsSuccess)
-            {
-                LoadingIndicator.IsVisible = false;
-                LoadingDetail.Text = "页面加载失败，请检查前端服务或本地资源。";
-                RetryButton.IsVisible = true;
-            }
-            else if (LoadingOverlay.IsVisible)
-            {
-                LoadingDetail.Text = "正在启动 React 应用…";
-            }
-        };
-
-        // Configure the source before attaching: NativeWebView navigates as soon as it enters the visual tree.
-        // Release serves the published bundle from wwwroot; Debug uses the Vite server unless overridden.
-        var configuredUrl = Environment.GetEnvironmentVariable("AVALONIA_REACT_URL");
-        if (!string.IsNullOrWhiteSpace(configuredUrl))
-        {
-            ReactView.Source = new Uri(configuredUrl, UriKind.Absolute);
-        }
-        else
-        {
-#if DEBUG
-            if (Environment.GetEnvironmentVariable("AVALONIA_REACT_EMBEDDED") == "1")
-            {
-                ReactView.UseEmbeddedAssets(ConfigureEmbeddedAssets);
-            }
-            else
-            {
-                ReactView.Source = new Uri("http://127.0.0.1:5173/");
-            }
-#else
-            ReactView.UseEmbeddedAssets(ConfigureEmbeddedAssets);
-#endif
-        }
-
-        ReactView.MessageReceived += (_, message) =>
-        {
-            if (message.Type == "react:shell-ready")
-            {
-                LoadingOverlay.IsVisible = false;
-            }
+            ReactLoadState.Idle => "正在初始化 WebView…",
+            ReactLoadState.Loading => "正在加载前端页面…",
+            ReactLoadState.Loaded => "正在启动 React 应用…",
+            ReactLoadState.Failed => $"页面加载失败：{args.Error}",
+            _ => string.Empty,
         };
     }
 
-    private static void ConfigureEmbeddedAssets(EmbeddedAssetOptions options)
+    private void HandleMessageReceived(object? sender, ReactMessageReceivedEventArgs message)
     {
-        var transport = Environment.GetEnvironmentVariable("AVALONIA_REACT_NATIVE");
-        if (transport == "1")
+        if (message.Type != "react:clicked")
         {
-            options.Transport = EmbeddedAssetTransport.NativeHost;
+            return;
         }
-        else if (string.Equals(transport, "auto", StringComparison.OrdinalIgnoreCase))
-        {
-            options.Transport = EmbeddedAssetTransport.Auto;
-        }
+
+        var receivedAt = DateTimeOffset.Now;
+        Title = $"Avalonia + React · 已收到 React 消息 {receivedAt:HH:mm:ss}";
+        _ = ReactView.PostMessageAsync("react:ack", new { at = receivedAt.ToString("HH:mm:ss") });
     }
 
     private void RetryButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         LoadingOverlay.IsVisible = true;
-        LoadingIndicator.IsVisible = true;
-        RetryButton.IsVisible = false;
         LoadingDetail.Text = "正在重新加载前端页面…";
-        ReactView.Refresh();
+        ReactView.Reload();
     }
 
     private sealed class HostApi : IHostApi

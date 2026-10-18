@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test
+        run: dotnet test tests/Avalonia.React.Tests/Avalonia.React.Tests.csproj -c Release --nologo -v minimal
+
+  pack:
+    name: Pack packages
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Pack
+        run: |
+          dotnet pack src/Avalonia.React/Avalonia.React.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/Avalonia.React.Vite/Avalonia.React.Vite.csproj -c Release -o artifacts/packages --nologo
+          dotnet pack src/Avalonia.React.SourceGenerator/Avalonia.React.SourceGenerator.csproj -c Release -o artifacts/packages --nologo
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/packages/*.nupkg
+          if-no-files-found: error

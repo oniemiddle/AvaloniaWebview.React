@@ -7,7 +7,10 @@
         Height="760"
         Background="{DynamicResource SemiColorBackground0}">
   <Grid>
+    <!-- SourceMode=Auto picks Vite in Debug and wwwroot in Release from build metadata. -->
     <react:AvaloniaReactWebView x:Name="ReactView"
+                                SourceMode="Auto"
+                                EnableWindowsOffscreenComposition="True"
                                 Background="{DynamicResource SemiColorBackground0}" />
 
     <!-- NativeWebView uses an offscreen WebView2 surface on Windows so Avalonia can render this overlay above it. -->

@@ -18,6 +18,8 @@ public sealed class AvaloniaReactWebView : NativeWebView
 {
     private static readonly Lazy<bool> DevServerLifetime = new(RegisterDevServerLifetime);
     private readonly Dictionary<string, ApiRegistration> _apis = new(StringComparer.Ordinal);
+    private readonly ReactMessageQueue _messageQueue = new();
+    private readonly List<Uri> _allowedOrigins = new();
     private IAssetTransport? _assetTransport;
 #if WINDOWS
     private NativeAssetHost? _nativeAssetHost;
@@ -25,6 +27,10 @@ public sealed class AvaloniaReactWebView : NativeWebView
     private EmbeddedAssetOptions? _embeddedAssetOptions;
     private bool _embeddedAssetsEnabled;
     private Window? _assetServerWindow;
+    private Uri? _navigationOrigin;
+    private bool _sourceConfigured;
+    private bool _bridgeReady;
+    private ReactLoadState _loadState;
 
     /// <summary>
     /// Creates a React WebView and listens for messages posted by the React client package.
@@ -32,15 +38,85 @@ public sealed class AvaloniaReactWebView : NativeWebView
     public AvaloniaReactWebView()
     {
         _ = DevServerLifetime.Value;
+        EnableDevTools = ReactDefaults.EnableDevTools;
         WebMessageReceived += HandleWebMessageReceived;
         ActualThemeVariantChanged += HandleActualThemeVariantChanged;
+        NavigationStarted += HandleNavigationStarted;
         NavigationCompleted += HandleNavigationCompleted;
+        NewWindowRequested += HandleNewWindowRequested;
+        EnvironmentRequested += HandleEnvironmentRequested;
     }
 
     /// <summary>
     /// Raised when JavaScript sends a message using <c>postMessage</c> from <c>@avalonia-react/bridge</c>.
+    /// Reserved bridge messages are handled by the control and are not forwarded.
     /// </summary>
     public event EventHandler<ReactMessageReceivedEventArgs>? MessageReceived;
+
+    /// <summary>Raised when <see cref="LoadState"/> changes.</summary>
+    public event EventHandler<ReactLoadStateChangedEventArgs>? LoadStateChanged;
+
+    /// <summary>Raised once per page when the React client sends <c>avalonia:ready</c>.</summary>
+    public event EventHandler<ReactBridgeReadyEventArgs>? BridgeReady;
+
+    /// <summary>Raised when an application <see cref="MessageReceived"/> handler throws.</summary>
+    public event EventHandler<ReactBridgeErrorEventArgs>? BridgeError;
+
+    /// <summary>Gets the current page lifecycle state.</summary>
+    public ReactLoadState LoadState => _loadState;
+
+    /// <summary>Gets the failure message when <see cref="LoadState"/> is <see cref="ReactLoadState.Failed"/>.</summary>
+    public string? LoadError { get; private set; }
+
+    /// <summary>Gets whether the page navigated successfully and can receive host messages.</summary>
+    public bool IsPageLoaded => _loadState == ReactLoadState.Loaded;
+
+    /// <summary>Gets whether the React client has sent the <c>avalonia:ready</c> handshake for the current page.</summary>
+    public bool IsBridgeReady => _bridgeReady;
+
+    /// <summary>
+    /// Gets or sets how the initial source is selected. <see cref="ReactSourceMode.Auto"/> resolves to the
+    /// Vite server for Debug builds and embedded assets otherwise, based on build-time metadata emitted by
+    /// the Avalonia.React MSBuild targets. Defaults to <see cref="ReactSourceMode.Manual"/> so existing
+    /// applications that assign <see cref="NativeWebView.Source"/> are unaffected.
+    /// </summary>
+    public ReactSourceMode SourceMode { get; set; } = ReactSourceMode.Manual;
+
+    /// <summary>Gets or sets the Vite server URL used by <see cref="ReactSourceMode.DevServer"/>.</summary>
+    public Uri? DevServerUrl { get; set; }
+
+    /// <summary>Gets or sets the published frontend directory. Defaults to <c>wwwroot</c> next to the executable.</summary>
+    public string? EmbeddedAssetsRoot { get; set; }
+
+    /// <summary>Gets or sets the transport used for embedded assets.</summary>
+    public EmbeddedAssetTransport EmbeddedAssetsTransport { get; set; } = EmbeddedAssetTransport.Loopback;
+
+    /// <summary>
+    /// Gets or sets what happens when a navigation leaves the application origin. Defaults to
+    /// <see cref="ReactExternalNavigationPolicy.OpenInSystemBrowser"/>.
+    /// </summary>
+    public ReactExternalNavigationPolicy ExternalNavigationPolicy { get; set; } = ReactExternalNavigationPolicy.OpenInSystemBrowser;
+
+    /// <summary>Gets or sets whether opening the WebView dev tools is requested. Defaults from build metadata (Debug on).</summary>
+    public bool EnableDevTools { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether WebView2 offscreen composition is requested on Windows. Enable this when Avalonia
+    /// content must render above the WebView, for example a loading overlay. Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool EnableWindowsOffscreenComposition { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum number of host-to-React messages held while the page is loading.
+    /// Defaults to 1024.
+    /// </summary>
+    public int MaxQueuedBridgeMessages { get; set; } = 1024;
+
+    /// <summary>
+    /// Gets the additional origins allowed to navigate inside the WebView when
+    /// <see cref="ExternalNavigationPolicy"/> is not <see cref="ReactExternalNavigationPolicy.Allow"/>.
+    /// </summary>
+    public IList<Uri> AllowedOrigins => _allowedOrigins;
 
     /// <summary>
     /// Starts serving a published frontend and navigates the WebView to it.
@@ -66,44 +142,236 @@ public sealed class AvaloniaReactWebView : NativeWebView
         var options = new EmbeddedAssetOptions();
         configure?.Invoke(options);
         _embeddedAssetOptions = options;
-        _embeddedAssetsEnabled = true;
 
-        if (TopLevel.GetTopLevel(this) is Window window)
+        try
+        {
+            if (TopLevel.GetTopLevel(this) is Window window)
+            {
+                AttachAssetServerWindow(window);
+            }
+
+            var transport = options.Transport;
+#if WINDOWS
+            if (transport == EmbeddedAssetTransport.Auto)
+            {
+                transport = OperatingSystem.IsWindows() ? EmbeddedAssetTransport.NativeHost : EmbeddedAssetTransport.Loopback;
+            }
+
+            if (transport == EmbeddedAssetTransport.NativeHost)
+            {
+                var native = new NativeAssetHost(options);
+                _assetTransport = native;
+                _nativeAssetHost = native;
+
+                if (TryGetPlatformHandle() is null)
+                {
+                    // The adapter is created on attach; map the virtual host before navigating.
+                    AdapterCreated += HandleNativeAssetAdapterCreated;
+                    return EnableEmbeddedAssets(native.BaseUri);
+                }
+
+                if (ApplyNativeAssetHost(native))
+                {
+                    return EnableEmbeddedAssets(native.BaseUri);
+                }
+
+                return EnableEmbeddedAssets(StartLoopbackAssetServer());
+            }
+#else
+            if (transport == EmbeddedAssetTransport.NativeHost)
+            {
+                throw new PlatformNotSupportedException(
+                    "NativeHost asset embedding requires a Windows target framework such as net10.0-windows. Use Loopback or Auto on this target.");
+            }
+#endif
+
+            return EnableEmbeddedAssets(StartLoopbackAssetServer());
+        }
+        catch
+        {
+            _embeddedAssetOptions = null;
+            _assetTransport = null;
+#if WINDOWS
+            _nativeAssetHost = null;
+            AdapterCreated -= HandleNativeAssetAdapterCreated;
+#endif
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Applies <see cref="SourceMode"/> immediately. This is called automatically when the control enters the
+    /// visual tree; call it explicitly only when configuring the control after it is already attached.
+    /// </summary>
+    /// <returns><see langword="true"/> when a source was configured; otherwise <see langword="false"/>.</returns>
+    public bool ApplySourceMode()
+    {
+        if (SourceMode == ReactSourceMode.Manual || _sourceConfigured || _embeddedAssetsEnabled)
+        {
+            return false;
+        }
+
+        var resolved = SourceMode == ReactSourceMode.Auto
+            ? ReactDefaults.ResolveSourceMode(DevServerUrl, EmbeddedAssetsRoot)
+            : SourceMode;
+
+        _sourceConfigured = true;
+        switch (resolved)
+        {
+            case ReactSourceMode.DevServer:
+                Source = DevServerUrl ?? ReactDefaults.DevServerUrl;
+                return true;
+
+            case ReactSourceMode.EmbeddedAssets:
+                try
+                {
+                    UseEmbeddedAssets(options =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(EmbeddedAssetsRoot))
+                        {
+                            options.RootPath = EmbeddedAssetsRoot;
+                        }
+
+                        options.Transport = EmbeddedAssetsTransport;
+                    });
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    _sourceConfigured = false;
+                    SetLoadState(ReactLoadState.Failed, exception.Message);
+                    return false;
+                }
+
+            default:
+                _sourceConfigured = false;
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Reloads the current page and resets <see cref="LoadState"/> to <see cref="ReactLoadState.Loading"/>.
+    /// </summary>
+    /// <returns><see langword="true"/> when the platform accepted the refresh request.</returns>
+    public bool Reload()
+    {
+        if (Source is null && !_sourceConfigured)
+        {
+            _ = ApplySourceMode();
+        }
+
+        if (Source is null)
+        {
+            SetLoadState(ReactLoadState.Idle, null);
+            return false;
+        }
+
+        _bridgeReady = false;
+        SetLoadState(ReactLoadState.Loading, null);
+        var refreshed = Refresh();
+        if (!refreshed)
+        {
+            SetLoadState(ReactLoadState.Failed, "The WebView is not ready to reload.");
+        }
+
+        return refreshed;
+    }
+
+    /// <summary>
+    /// Registers an implementation of a TypeScript-generated API contract so React can invoke its methods.
+    /// </summary>
+    /// <typeparam name="TApi">The generated C# interface for an exported TypeScript API.</typeparam>
+    /// <param name="implementation">The host-side implementation.</param>
+    /// <param name="apiName">The JavaScript API name. Defaults to the generated interface name without its leading I.</param>
+    public void RegisterApi<TApi>(TApi implementation, string? apiName = null) where TApi : class
+    {
+        ArgumentNullException.ThrowIfNull(implementation);
+        var contract = typeof(TApi);
+        if (!contract.IsInterface)
+        {
+            throw new ArgumentException("TApi must be an interface generated from a TypeScript API contract.", nameof(TApi));
+        }
+
+        var name = apiName ?? (contract.Name.StartsWith("I", StringComparison.Ordinal) ? contract.Name.Substring(1) : contract.Name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (_apis.ContainsKey(name))
+        {
+            throw new ArgumentException($"An API named '{name}' is already registered on this WebView.", nameof(apiName));
+        }
+
+        var methods = contract.GetMethods().ToDictionary(GetJavaScriptMethodName, StringComparer.Ordinal);
+        _apis[name] = new ApiRegistration(implementation, methods);
+    }
+
+    /// <summary>Removes a previously registered API.</summary>
+    /// <param name="apiName">The JavaScript API name passed to <see cref="RegisterApi{TApi}"/>.</param>
+    /// <returns><see langword="true"/> when an API was removed.</returns>
+    public bool UnregisterApi(string apiName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiName);
+        return _apis.Remove(apiName);
+    }
+
+    /// <summary>
+    /// Sends a JSON message to listeners registered with <c>subscribe</c> in the React client.
+    /// Messages sent before the page finishes loading are queued and delivered on load.
+    /// </summary>
+    /// <param name="type">A message name, such as <c>account:changed</c>.</param>
+    /// <param name="payload">Any value supported by <see cref="JsonSerializer"/>.</param>
+    /// <returns>The result returned by the native WebView JavaScript execution.</returns>
+    public Task<string?> PostMessageAsync<T>(string type, T payload)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(type);
+
+        var message = JsonSerializer.Serialize(new ReactMessage<T>(type, payload));
+        var script = $"window.dispatchEvent(new CustomEvent('{ReactBridgeMessages.DomainEventName}', {{ detail: {message} }}));";
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            return PostScriptAsync(script);
+        }
+
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                completion.TrySetResult(await PostScriptAsync(script));
+            }
+            catch (Exception exception)
+            {
+                completion.TrySetException(exception);
+            }
+        });
+        return completion.Task;
+    }
+
+    /// <inheritdoc />
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        if (!_sourceConfigured)
+        {
+            _ = ApplySourceMode();
+        }
+
+        base.OnAttachedToVisualTree(e);
+        if (_embeddedAssetsEnabled && TopLevel.GetTopLevel(this) is Window window)
         {
             AttachAssetServerWindow(window);
         }
+    }
 
-        var transport = options.Transport;
-#if WINDOWS
-        if (transport == EmbeddedAssetTransport.Auto)
-        {
-            transport = OperatingSystem.IsWindows() ? EmbeddedAssetTransport.NativeHost : EmbeddedAssetTransport.Loopback;
-        }
+    /// <inheritdoc />
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        DetachAssetServerWindow();
+        base.OnDetachedFromVisualTree(e);
+    }
 
-        if (transport == EmbeddedAssetTransport.NativeHost)
-        {
-            var native = new NativeAssetHost(options);
-            _assetTransport = native;
-            _nativeAssetHost = native;
-
-            if (TryGetPlatformHandle() is null)
-            {
-                // The adapter is created on attach; map the virtual host before navigating.
-                AdapterCreated += HandleNativeAssetAdapterCreated;
-                return native.BaseUri;
-            }
-
-            return ApplyNativeAssetHost(native) ? native.BaseUri : StartLoopbackAssetServer();
-        }
-#else
-        if (transport == EmbeddedAssetTransport.NativeHost)
-        {
-            throw new PlatformNotSupportedException(
-                "NativeHost asset embedding requires a Windows target framework such as net10.0-windows. Use Loopback or Auto on this target.");
-        }
-#endif
-
-        return StartLoopbackAssetServer();
+    private Uri EnableEmbeddedAssets(Uri baseUri)
+    {
+        _embeddedAssetsEnabled = true;
+        _sourceConfigured = true;
+        return baseUri;
     }
 
 #if WINDOWS
@@ -152,23 +420,6 @@ public sealed class AvaloniaReactWebView : NativeWebView
     }
 #endif
 
-    /// <inheritdoc />
-    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToVisualTree(e);
-        if (_embeddedAssetsEnabled && TopLevel.GetTopLevel(this) is Window window)
-        {
-            AttachAssetServerWindow(window);
-        }
-    }
-
-    /// <inheritdoc />
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        DetachAssetServerWindow();
-        base.OnDetachedFromVisualTree(e);
-    }
-
     private void AttachAssetServerWindow(Window window)
     {
         if (ReferenceEquals(_assetServerWindow, window))
@@ -198,6 +449,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         _nativeAssetHost = null;
 #endif
 
+        _messageQueue.FailAll(new InvalidOperationException("The host window closed before the message could be delivered."));
         var transport = _assetTransport;
         _assetTransport = null;
         if (transport is not null)
@@ -206,42 +458,11 @@ public sealed class AvaloniaReactWebView : NativeWebView
         }
     }
 
-    /// <summary>
-    /// Registers an implementation of a TypeScript-generated API contract so React can invoke its methods.
-    /// </summary>
-    /// <typeparam name="TApi">The generated C# interface for an exported TypeScript API.</typeparam>
-    /// <param name="implementation">The host-side implementation.</param>
-    /// <param name="apiName">The JavaScript API name. Defaults to the generated interface name without its leading I.</param>
-    public void RegisterApi<TApi>(TApi implementation, string? apiName = null) where TApi : class
+    private Task<string?> PostScriptAsync(string script)
     {
-        ArgumentNullException.ThrowIfNull(implementation);
-        var contract = typeof(TApi);
-        if (!contract.IsInterface)
-        {
-            throw new ArgumentException("TApi must be an interface generated from a TypeScript API contract.", nameof(TApi));
-        }
-
-        var name = apiName ?? (contract.Name.StartsWith("I", StringComparison.Ordinal) ? contract.Name.Substring(1) : contract.Name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        var methods = contract.GetMethods().ToDictionary(GetJavaScriptMethodName, StringComparer.Ordinal);
-        _apis[name] = new ApiRegistration(implementation, methods);
-    }
-
-    /// <summary>
-    /// Sends a JSON message to listeners registered with <c>subscribe</c> in the React client.
-    /// </summary>
-    /// <param name="type">A message name, such as <c>account:changed</c>.</param>
-    /// <param name="payload">Any value supported by <see cref="JsonSerializer"/>.</param>
-    /// <returns>The result returned by the native WebView JavaScript execution.</returns>
-    public Task<string?> PostMessageAsync<T>(string type, T payload)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(type);
-
-        var message = JsonSerializer.Serialize(new ReactMessage<T>(type, payload));
-        var script = $"window.dispatchEvent(new CustomEvent('avalonia-react:message', {{ detail: {message} }}));";
         if (Dispatcher.UIThread.CheckAccess())
         {
-            return InvokeScript(script);
+            return PostScriptCoreAsync(script);
         }
 
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -249,7 +470,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
         {
             try
             {
-                completion.TrySetResult(await InvokeScript(script));
+                completion.TrySetResult(await PostScriptCoreAsync(script));
             }
             catch (Exception exception)
             {
@@ -259,15 +480,199 @@ public sealed class AvaloniaReactWebView : NativeWebView
         return completion.Task;
     }
 
-    private void HandleActualThemeVariantChanged(object? sender, EventArgs e) => PostCurrentTheme();
+    private Task<string?> PostScriptCoreAsync(string script)
+    {
+        if (_loadState == ReactLoadState.Failed)
+        {
+            throw new InvalidOperationException(LoadError ?? "The React page failed to load.");
+        }
+
+        return _loadState == ReactLoadState.Loaded
+            ? InvokeScript(script)
+            : _messageQueue.Enqueue(script, MaxQueuedBridgeMessages);
+    }
+
+    private async Task FlushMessageQueueAsync()
+    {
+        await _messageQueue.FlushAsync(InvokeScript).ConfigureAwait(true);
+    }
+
+    private void HandleEnvironmentRequested(object? sender, WebViewEnvironmentRequestedEventArgs args)
+    {
+        args.EnableDevTools = EnableDevTools;
+        if (EnableWindowsOffscreenComposition && args is WindowsWebView2EnvironmentRequestedEventArgs windows)
+        {
+            windows.ExperimentalOffscreen = true;
+        }
+    }
+
+    private void HandleNavigationStarted(object? sender, WebViewNavigationStartingEventArgs args)
+    {
+        var request = args.Request;
+        if (request is null)
+        {
+            _bridgeReady = false;
+            SetLoadState(ReactLoadState.Loading, null);
+            return;
+        }
+
+        if (ExternalNavigationPolicy != ReactExternalNavigationPolicy.Allow && !IsInternalNavigation(request))
+        {
+            if (ExternalNavigationPolicy == ReactExternalNavigationPolicy.OpenInSystemBrowser)
+            {
+                TryOpenInSystemBrowser(request);
+            }
+
+            args.Cancel = true;
+            return;
+        }
+
+        _bridgeReady = false;
+        RememberNavigationOrigin(request);
+        SetLoadState(ReactLoadState.Loading, null);
+    }
 
     private void HandleNavigationCompleted(object? sender, WebViewNavigationCompletedEventArgs args)
     {
-        if (args.IsSuccess)
+        if (!args.IsSuccess)
         {
-            PostCurrentTheme();
+            SetLoadState(ReactLoadState.Failed, args.Request is null
+                ? "The React page failed to load."
+                : $"Navigation to '{args.Request}' failed.");
+            return;
+        }
+
+        if (args.Request is not null)
+        {
+            RememberNavigationOrigin(args.Request);
+        }
+
+        SetLoadState(ReactLoadState.Loaded, null);
+        _ = FlushMessageQueueAsync();
+        PostCurrentTheme();
+    }
+
+    private void HandleNewWindowRequested(object? sender, WebViewNewWindowRequestedEventArgs args)
+    {
+        if (args.Handled)
+        {
+            return;
+        }
+
+        var request = args.Request;
+        if (request is null)
+        {
+            args.Handled = true;
+            return;
+        }
+
+        if (!ReactUriPolicy.IsHttp(request))
+        {
+            // about:blank and data: popups are not supported; leave the current page untouched.
+            args.Handled = true;
+            return;
+        }
+
+        if (IsInternalNavigation(request))
+        {
+            args.Handled = true;
+            Source = request;
+            return;
+        }
+
+        switch (ExternalNavigationPolicy)
+        {
+            case ReactExternalNavigationPolicy.OpenInSystemBrowser:
+                TryOpenInSystemBrowser(request);
+                args.Handled = true;
+                break;
+
+            case ReactExternalNavigationPolicy.Block:
+                args.Handled = true;
+                break;
         }
     }
+
+    private bool IsInternalNavigation(Uri request)
+    {
+        if (!ReactUriPolicy.IsHttp(request))
+        {
+            return true;
+        }
+
+        if (_navigationOrigin is null)
+        {
+            return true;
+        }
+
+        if (ReactUriPolicy.IsSameOrigin(request, _navigationOrigin))
+        {
+            return true;
+        }
+
+        foreach (var allowedOrigin in _allowedOrigins)
+        {
+            if (allowedOrigin is not null && ReactUriPolicy.IsSameOrigin(request, allowedOrigin))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void RememberNavigationOrigin(Uri request)
+    {
+        if (_navigationOrigin is null && ReactUriPolicy.IsHttp(request))
+        {
+            _navigationOrigin = ReactUriPolicy.GetOrigin(request);
+        }
+    }
+
+    private static bool TryOpenInSystemBrowser(Uri uri)
+    {
+        if (!ReactUriPolicy.IsHttp(uri))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(uri.AbsoluteUri)
+            {
+                UseShellExecute = true,
+            });
+            return process is not null;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private void SetLoadState(ReactLoadState state, string? error)
+    {
+        if (_loadState == state && string.Equals(LoadError, error, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _loadState = state;
+        LoadError = error;
+        if (state != ReactLoadState.Loaded)
+        {
+            _bridgeReady = false;
+        }
+
+        if (state == ReactLoadState.Failed)
+        {
+            _messageQueue.FailAll(new InvalidOperationException(error ?? "The React page failed to load."));
+        }
+
+        LoadStateChanged?.Invoke(this, new ReactLoadStateChangedEventArgs(state, error));
+    }
+
+    private void HandleActualThemeVariantChanged(object? sender, EventArgs e) => PostCurrentTheme();
 
     private void PostCurrentTheme()
     {
@@ -284,7 +689,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
     {
         try
         {
-            await PostMessageAsync("theme", new { theme = GetThemeName(ActualThemeVariant) });
+            await PostMessageAsync(ReactBridgeMessages.Theme, new { theme = GetThemeName(ActualThemeVariant) });
         }
         catch (Exception)
         {
@@ -318,51 +723,60 @@ public sealed class AvaloniaReactWebView : NativeWebView
             : "light";
 
     private void HandleWebMessageReceived(object? sender, WebMessageReceivedEventArgs args)
-    {        if (string.IsNullOrWhiteSpace(args.Body))
+    {
+        if (!ReactBridgeProtocol.TryParse(args.Body, out var messageType, out var payload))
         {
             return;
         }
 
-        try
+        if (messageType == ReactBridgeMessages.Ready)
         {
-            using var document = JsonDocument.Parse(args.Body);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("type", out var typeElement) ||
-                typeElement.ValueKind != JsonValueKind.String)
-            {
-                return;
-            }
-
-            var payload = root.TryGetProperty("payload", out var payloadElement)
-                ? payloadElement.Clone()
-                : JsonSerializer.SerializeToElement<object?>(null);
-
-            var messageType = typeElement.GetString()!;
-            if (messageType == "theme:request")
-            {
-                PostCurrentTheme();
-                return;
-            }
-
-            if (messageType == "avalonia:invoke")
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    _ = HandleApiInvocationAsync(payload);
-                });
-                return;
-            }
-
-            var message = new ReactMessageReceivedEventArgs(messageType, payload);
-            Dispatcher.UIThread.Post(() => MessageReceived?.Invoke(this, message));
+            MarkBridgeReady(payload);
+            return;
         }
-        catch (JsonException)
+
+        if (messageType == ReactBridgeMessages.ThemeRequest)
         {
-            // Ignore invalid bridge payloads; application messages remain isolated from the WebView event loop.
+            PostCurrentTheme();
+            return;
         }
-        catch (Exception)
+
+        if (messageType == ReactBridgeMessages.Invoke)
         {
+            Dispatcher.UIThread.Post(() => _ = HandleApiInvocationAsync(payload));
+            return;
+        }
+
+        var message = new ReactMessageReceivedEventArgs(messageType, payload);
+        Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                MessageReceived?.Invoke(this, message);
+            }
+            catch (Exception exception)
+            {
+                BridgeError?.Invoke(this, new ReactBridgeErrorEventArgs(exception));
+            }
+        });
+    }
+
+    private void MarkBridgeReady(JsonElement payload)
+    {
+        if (_bridgeReady)
+        {
+            return;
+        }
+
+        _bridgeReady = true;
+        var args = new ReactBridgeReadyEventArgs(payload);
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            BridgeReady?.Invoke(this, args);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => BridgeReady?.Invoke(this, args));
         }
     }
 
@@ -396,8 +810,7 @@ public sealed class AvaloniaReactWebView : NativeWebView
                 arguments[index] = jsonArguments[index].Deserialize(parameters[index].ParameterType, JsonSerializerOptions.Web);
             }
 
-            var implementationMethod = registration.Implementation.GetType().GetMethod(method.Name)
-                ?? throw new InvalidOperationException($"The implementation of '{apiName}.{methodName}' is missing.");
+            var implementationMethod = FindImplementationMethod(registration.Implementation.GetType(), method);
             var invocation = implementationMethod.Invoke(registration.Implementation, arguments);
             if (invocation is Task task)
             {
@@ -418,8 +831,36 @@ public sealed class AvaloniaReactWebView : NativeWebView
 
         if (!string.IsNullOrWhiteSpace(requestId))
         {
-            await PostMessageAsync("avalonia:invoke:result", new { requestId, result, error });
+            try
+            {
+                await PostMessageAsync(ReactBridgeMessages.InvokeResult, new { requestId, result, error });
+            }
+            catch (Exception)
+            {
+                // The page navigated away or failed; the JavaScript caller will time out or unload.
+            }
         }
+    }
+
+    private static MethodInfo FindImplementationMethod(Type implementationType, MethodInfo interfaceMethod)
+    {
+        var interfaceType = interfaceMethod.DeclaringType;
+        if (interfaceType is not null &&
+            interfaceType.IsInterface &&
+            implementationType.GetInterfaces().Contains(interfaceType))
+        {
+            var map = implementationType.GetInterfaceMap(interfaceType);
+            for (var index = 0; index < map.InterfaceMethods.Length; index++)
+            {
+                if (map.InterfaceMethods[index] == interfaceMethod)
+                {
+                    return map.TargetMethods[index];
+                }
+            }
+        }
+
+        return implementationType.GetMethod(interfaceMethod.Name)
+            ?? throw new InvalidOperationException($"The implementation of '{interfaceType?.Name}.{interfaceMethod.Name}' is missing.");
     }
 
     private static string GetJavaScriptMethodName(MethodInfo method)

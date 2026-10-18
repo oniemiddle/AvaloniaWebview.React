@@ -6,7 +6,21 @@
     <AvaloniaReactInstallCommand Condition="'$(AvaloniaReactInstallCommand)' == ''">npm ci</AvaloniaReactInstallCommand>
     <AvaloniaReactBuildOnBuild Condition="'$(AvaloniaReactBuildOnBuild)' == ''">true</AvaloniaReactBuildOnBuild>
     <AvaloniaReactEmbeddedAssets Condition="'$(AvaloniaReactEmbeddedAssets)' == ''">false</AvaloniaReactEmbeddedAssets>
+
+    <!-- Defaults read by AvaloniaReactWebView.SourceMode="Auto" at runtime. -->
+    <AvaloniaReactDefaultSourceMode Condition="'$(AvaloniaReactDefaultSourceMode)' == '' and '$(Configuration)' == 'Debug'">DevServer</AvaloniaReactDefaultSourceMode>
+    <AvaloniaReactDefaultSourceMode Condition="'$(AvaloniaReactDefaultSourceMode)' == ''">EmbeddedAssets</AvaloniaReactDefaultSourceMode>
+    <AvaloniaReactDevServerUrl Condition="'$(AvaloniaReactDevServerUrl)' == ''">http://127.0.0.1:5173/</AvaloniaReactDevServerUrl>
+    <AvaloniaReactEnableDevTools Condition="'$(AvaloniaReactEnableDevTools)' == '' and '$(Configuration)' == 'Debug'">true</AvaloniaReactEnableDevTools>
+    <AvaloniaReactEnableDevTools Condition="'$(AvaloniaReactEnableDevTools)' == ''">false</AvaloniaReactEnableDevTools>
+    <AvaloniaReactEmitAssemblyMetadata Condition="'$(AvaloniaReactEmitAssemblyMetadata)' == ''">true</AvaloniaReactEmitAssemblyMetadata>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(AvaloniaReactEmitAssemblyMetadata)' == 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">
+    <AssemblyMetadata Include="AvaloniaReact.SourceMode" Value="$(AvaloniaReactDefaultSourceMode)" />
+    <AssemblyMetadata Include="AvaloniaReact.DevServerUrl" Value="$(AvaloniaReactDevServerUrl)" />
+    <AssemblyMetadata Include="AvaloniaReact.EnableDevTools" Value="$(AvaloniaReactEnableDevTools)" />
+  </ItemGroup>
 
   <Target Name="AvaloniaReactBuildBridge"
           Condition="'$(AvaloniaReactBuildOnBuild)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(AvaloniaReactBridgeDirectory)' != '' and Exists('$(AvaloniaReactBridgeDirectory)\package.json')">

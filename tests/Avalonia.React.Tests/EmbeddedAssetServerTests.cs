@@ -8,7 +8,7 @@ namespace Avalonia.React.Tests;
 
 public sealed class EmbeddedAssetServerTests : IAsyncLifetime
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "avalonia-react-tests-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(AppContext.BaseDirectory, "test-assets", Guid.NewGuid().ToString("N"));
     private EmbeddedAssetServer _server = null!;
     private HttpClient _client = null!;
 

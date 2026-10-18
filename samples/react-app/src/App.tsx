@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import "@douyinfe/semi-ui/react19-adapter";
 import { Avatar, Button, Card, Col, Layout, Nav, Row, Space, Tag, Typography } from "@douyinfe/semi-ui";
-import { invokeHostApi, postMessage } from "@avalonia-react/bridge";
+import { invokeHostApi, postMessage, signalReady, subscribe } from "@avalonia-react/bridge";
 
 const ServiceTable = lazy(() => import("./ServiceTable"));
 
@@ -12,6 +12,7 @@ export default function App() {
   const [greeting, setGreeting] = useState("等待 Avalonia 宿主连接…");
   const [clicks, setClicks] = useState(0);
   const [apiResult, setApiResult] = useState("");
+  const [ack, setAck] = useState("");
   const [showServiceDetails, setShowServiceDetails] = useState(false);
 
   useEffect(() => {
@@ -24,20 +25,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (typeof window.invokeCSharpAction !== "function") return;
+    const unsubscribe = subscribe<{ at: string }>("react:ack", ({ at }) => setAck(at));
 
     let canceled = false;
-    let frame = window.requestAnimationFrame(() => {
-      frame = window.requestAnimationFrame(() => {
-        if (!canceled) {
-          postMessage("react:shell-ready", { frontend: "React 19" });
-        }
-      });
+    const frame = window.requestAnimationFrame(() => {
+      if (!canceled) {
+        // Tells AvaloniaReactWebView the app mounted, so the host can hide its loading overlay.
+        signalReady({ frontend: "React 19" });
+      }
     });
 
     return () => {
       canceled = true;
-      window.cancelAnimationFrame(frame);
+      cancelAnimationFrame(frame);
+      unsubscribe();
     };
   }, []);
 
@@ -88,6 +89,7 @@ export default function App() {
               <Text>React 与 Avalonia 通过 JSON 消息进行双向通信。</Text>
               <Text type="tertiary">Vite 热更新直接显示在原生 WebView 中。</Text>
               {apiResult && <Text>{apiResult}</Text>}
+              {ack && <Text type="tertiary">宿主回执：{ack}</Text>}
             </Space>
           </Card>
         </Content>

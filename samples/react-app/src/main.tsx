@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { postMessage, subscribe } from "@avalonia-react/bridge";
+import { requestTheme, subscribe } from "@avalonia-react/bridge";
 import App from "./App";
 import "./style.css";
 
@@ -20,7 +20,7 @@ subscribe<{ theme: "light" | "dark" }>("theme", ({ theme }) => applyTheme(theme)
 const root = document.getElementById("root");
 if (root) {
   if (typeof window.invokeCSharpAction === "function") {
-    postMessage("theme:request", {});
+    requestTheme();
 
     const startedAt = performance.now();
     const renderWhenThemeIsReady = () => {
