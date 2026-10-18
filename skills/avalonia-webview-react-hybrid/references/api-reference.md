@@ -120,6 +120,39 @@ public static class ReactJsonSerializerDefaults
 
 `Options` is non-null and uses web defaults. Generated JSON support registers its resolver with `AddTypeInfoResolver` from a module initializer; assigning `Options` combines the generated resolver as a fallback. Use a custom context for payload types outside generated contracts; a view-level `BridgeJsonSerializerOptions` can be constructed from `ReactJsonSerializerDefaults.Options` to keep that fallback.
 
+## Runtime availability
+
+```csharp
+public static class ReactWebViewAvailability
+{
+    public static ReactWebViewAvailabilityReport Check();
+    public static ReactWebViewAvailabilityReport EnsureAvailable();
+}
+
+public enum ReactWebViewPlatform { Unknown, Windows, MacOS, Linux, Android, Browser }
+public enum ReactWebViewAvailabilityStatus
+{
+    Available, RuntimeMissing, UnsupportedPlatform, UnsupportedHost, ProbeFailed,
+}
+
+public sealed record ReactWebViewAvailabilityReport
+{
+    public ReactWebViewPlatform Platform { get; init; }
+    public bool IsAvailable { get; init; }
+    public ReactWebViewAvailabilityStatus Status { get; init; }
+    public WebViewAdapterType? AdapterType { get; init; }
+    public string? Engine { get; init; }
+    public string? RuntimeVersion { get; init; }
+    public string Message { get; init; }
+    public string? Guidance { get; init; }
+    public string? UnavailableReason { get; init; }
+    public string? SupportedScenarios { get; init; }
+    public IReadOnlyList<string> Details { get; init; }
+}
+```
+
+`Check()` probes the platform adapter without creating a WebView. `EnsureAvailable()` throws `PlatformNotSupportedException` with the report's message and guidance when unavailable.
+
 ## Client (`@avalonia-react/bridge`)
 
 ```ts

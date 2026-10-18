@@ -285,6 +285,21 @@ Typical runtime causes: missing WebView2 on Windows, missing WKWebView/system co
 
 The host window's asset-server subscription follows the control. Do not create a second WebView just to move a tab between windows unless the product actually needs two independent sessions.
 
+## Runtime availability preflight
+
+Call the static preflight before creating the first window when the app must show a friendly install message:
+
+```csharp
+var availability = ReactWebViewAvailability.Check();
+if (!availability.IsAvailable)
+{
+    ShowInstallGuidance(availability.Message, availability.Guidance);
+    return;
+}
+```
+
+`ReactWebViewAvailability.EnsureAvailable()` throws `PlatformNotSupportedException` with the same guidance. The report includes `Platform`, `Status`, `AdapterType`, `Engine`, `RuntimeVersion`, `SupportedScenarios`, `Guidance`, and `Details`; it probes Avalonia's adapter without creating a WebView. Supported desktop engines are Windows WebView2, macOS WKWebView, and Linux WebKitGTK.
+
 ## Trimming and Native AOT
 
 Use the generated `HostApiBridge.Register` helper, not the reflection overload.
@@ -320,7 +335,8 @@ Start with `references/troubleshooting.md` for commands and exact checks. Quick 
 | “API method is not registered” | Contract namespace/API name, helper registration, generated assembly name, and React proxy string. |
 | Host API rejected with origin error | `TrustedApiOrigins`; `AllowedOrigins` only covers navigation. |
 | XAML cannot find `ReactHostView` | Use `xmlns:react="using:AvaloniaWebview.React"` and `react:ReactHostView`. |
-| Windows host window is blank | Missing Windows 10/11 compatibility manifest. |
+| Windows host window is blank | Run `ReactWebViewAvailability.Check()`; then check the Windows 10/11 compatibility manifest and WebView2 runtime. |
+| App should fail fast when WebView is missing | `ReactWebViewAvailability.EnsureAvailable()` at startup. |
 | Trimmed app cannot call a generated DTO API | Update to the current generator; if the payload type is outside generated contracts, add it to a `JsonSerializerContext`. |
 | Navigation leaves the app | `ExternalNavigationPolicy`, `AllowedOrigins`, and the non-HTTP navigation rule. |
 | Page state lost after moving a tab | Use a `ReactHostView` in that window; it preserves the WebView by default. |

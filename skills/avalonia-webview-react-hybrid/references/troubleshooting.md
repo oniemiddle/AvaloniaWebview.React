@@ -111,6 +111,15 @@ This is the security boundary, not a bridge bug.
 - Add every custom root payload type used by `PostMessageAsync` or `InvokeReactAsync`; nested types are discovered from roots.
 - Do not suppress the trimming warning by ignoring it; the call can still fail at runtime.
 
+### WebView runtime missing
+
+Run `ReactWebViewAvailability.Check()` before creating the window:
+
+- `Status == RuntimeMissing` means WebView2, WKWebView, or WebKitGTK is absent; `Guidance` has the install command/link.
+- `Status == UnsupportedPlatform` means the host OS/scenario is unsupported.
+- `Status == ProbeFailed` means the adapter probe threw; inspect `Details` and the platform logs.
+- Use `ReactWebViewAvailability.EnsureAvailable()` to fail fast with a `PlatformNotSupportedException`.
+
 ## 4. Messages or theme do not work
 
 - React must subscribe before the host sends: use `subscribe(type, listener)` and keep the returned unsubscribe for cleanup.

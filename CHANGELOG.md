@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero-config trimmed/AOT JSON support: the source generator emits converters and a type-info
   resolver for generated DTOs, enums, lists, dictionaries, and nullable values, and installs it
   through `ReactJsonSerializerDefaults` at assembly load.
+- Runtime availability preflight: `ReactWebViewAvailability.Check()` and `EnsureAvailable()` report
+  the platform adapter, engine, runtime version, and install guidance without creating a WebView.
 
 ## [0.17.0] - 2026-10-18
 

@@ -437,6 +437,24 @@ ReactJsonSerializerDefaults.Options = AppJsonContext.Default.Options;
 
 Setting `ReactJsonSerializerDefaults.Options` keeps the generated resolver as a fallback, so generated DTO/enum contracts and custom context types can coexist. The reflection-based `RegisterApi<TApi>` path remains annotated with `RequiresUnreferencedCode`/`RequiresDynamicCode`; use `HostApiBridge.Register` for trimming/AOT. Embedded assets, the loopback server, and WebView hosting have no additional trim requirements. The sample's primitive API and a generated DTO/enum/list contract were verified with `PublishTrimmed=true` and reflection-based serialization disabled.
 
+## Runtime availability preflight
+
+Check the native WebView runtime before creating the window, so a missing runtime becomes an actionable startup message instead of a blank page:
+
+```csharp
+var availability = ReactWebViewAvailability.Check();
+if (!availability.IsAvailable)
+{
+    ShowInstallGuidance(availability.Message, availability.Guidance);
+    return;
+}
+
+// Throws PlatformNotSupportedException with the same guidance.
+ReactWebViewAvailability.EnsureAvailable();
+```
+
+`Check` inspects Avalonia's platform adapter and requires no WebView instance. The report exposes `Platform`, `Status`, `AdapterType`, `Engine`, `RuntimeVersion`, `SupportedScenarios`, `Guidance`, and `Details` for logs. It detects Windows WebView2, macOS WKWebView, and Linux WebKitGTK and provides install instructions for the missing runtime.
+
 ## Platform notes
 
 - Windows uses the installed Microsoft Edge WebView2 runtime.

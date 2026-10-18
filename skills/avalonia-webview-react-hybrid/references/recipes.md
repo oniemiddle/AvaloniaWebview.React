@@ -202,6 +202,23 @@ Generated `UserProfile` has `[JsonPropertyName]` properties and nullable optiona
 
 If an interface mixes methods and properties, it is treated as an API and its properties are reported as unsupported (`AVR0001`). Split the shape into an API interface and a DTO interface.
 
+## Runtime availability preflight
+
+```csharp
+using AvaloniaWebview.React;
+
+var availability = ReactWebViewAvailability.Check();
+if (!availability.IsAvailable)
+{
+    // availability.Message explains what is missing.
+    // availability.Guidance contains install commands/links.
+    ShowInstallGuidance(availability.Message, availability.Guidance);
+    return;
+}
+```
+
+Use `ReactWebViewAvailability.EnsureAvailable()` when throwing is preferable to showing a UI. The probe runs before a WebView exists and works on Windows, macOS, and Linux.
+
 ## Trimming / Native AOT
 
 Generated registration avoids method reflection. Primitive API arguments/results and host messages are reflection-free. Generated DTOs, enums, arrays, dictionaries, and nullable values are covered by a generated type-info resolver installed automatically. For custom payload types outside generated contracts, add a source-generated JSON context:
